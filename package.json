@@ -5,7 +5,8 @@
   "scripts": {
     "clean": "npx rimraf dist dist-electron",
     "dev": "cross-env NODE_ENV=development npm run clean && concurrently \"tsc -w -p tsconfig.electron.json\" \"vite\" \"wait-on -t 30000 http://localhost:54321 && electron ./dist-electron/main.js\"",
-    "test": "echo \"No tests defined. Please contribute if you like\" && exit 0",
+    "test": "vitest --run",
+    "test:watch": "vitest",
     "lint": "npx eslint .",
     "start": "cross-env NODE_ENV=development concurrently \"tsc -p tsconfig.electron.json\" \"vite\" \"wait-on -t 30000 http://localhost:54321 && electron ./dist-electron/main.js\"",
     "build": "cross-env NODE_ENV=production npm run clean && vite build && tsc -p tsconfig.electron.json",
@@ -171,6 +172,7 @@
     "@typescript-eslint/parser": "^7.18.0",
     "@typescript-eslint/utils": "^8.29.1",
     "@vitejs/plugin-react": "^4.2.1",
+    "@vitest/ui": "^3.2.4",
     "autoprefixer": "^10.4.20",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
@@ -189,6 +191,7 @@
     "vite": "^6.2.5",
     "vite-plugin-electron": "^0.28.4",
     "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^3.2.4",
     "wait-on": "^7.2.0"
   },
   "browserslist": {

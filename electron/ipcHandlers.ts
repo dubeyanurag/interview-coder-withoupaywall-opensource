@@ -200,6 +200,38 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
     }
   })
 
+  // CLI-specific handlers
+  ipcMain.handle("check-gemini-cli-status", async () => {
+    try {
+      // Use the new comprehensive CLI status method
+      const status = await configHelper.getGeminiCLIStatus();
+      return status;
+    } catch (error: any) {
+      console.error("Error checking Gemini CLI status:", error);
+      return {
+        isInstalled: false,
+        isAuthenticated: false,
+        isCompatible: false,
+        error: `Error checking CLI status: ${error.message}`,
+        errorCategory: 'unknown',
+        errorSeverity: 'high'
+      };
+    }
+  })
+
+  ipcMain.handle("get-gemini-cli-models", async () => {
+    try {
+      const result = await configHelper.getGeminiCLIModels();
+      return result;
+    } catch (error: any) {
+      console.error("Error getting Gemini CLI models:", error);
+      return {
+        models: [],
+        error: `Error getting CLI models: ${error.message}`
+      };
+    }
+  })
+
   // Settings portal handler
   ipcMain.handle("open-settings-portal", () => {
     const mainWindow = deps.getMainWindow();

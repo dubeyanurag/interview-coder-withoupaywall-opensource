@@ -1,3 +1,13 @@
+// Import CLI types for proper type safety
+import type { 
+  APIProvider, 
+  Config, 
+  ConfigUpdate, 
+  CLIStatus, 
+  CLIModelsResponse,
+  CLIError 
+} from '../../electron/CLITypes';
+
 export interface ElectronAPI {
   // Original methods
   openSubscriptionPortal: (authData: {
@@ -26,7 +36,7 @@ export interface ElectronAPI {
   onDebugSuccess: (callback: (data: any) => void) => () => void
   onSolutionError: (callback: (error: string) => void) => () => void
   onProcessingNoScreenshots: (callback: () => void) => () => void
-  onProblemExtracted: (callback: (data: any) => void) => () => void
+  onProblemExtracted: (callback: (data: any) => void) => void
   onSolutionSuccess: (callback: (data: any) => void) => () => void
   onUnauthorized: (callback: () => void) => () => void
   onDebugError: (callback: (error: string) => void) => () => void
@@ -53,14 +63,31 @@ export interface ElectronAPI {
   openSettingsPortal: () => Promise<void>
   getPlatform: () => string
   
-  // New methods for OpenAI integration
-  getConfig: () => Promise<{ apiKey: string; model: string }>
-  updateConfig: (config: { apiKey?: string; model?: string }) => Promise<boolean>
+  // Configuration methods with proper typing
+  getConfig: () => Promise<Config>
+  updateConfig: (config: ConfigUpdate) => Promise<boolean>
   checkApiKey: () => Promise<boolean>
-  validateApiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>
+  validateApiKey: (apiKey: string, provider?: APIProvider) => Promise<{ valid: boolean; error?: string }>
   openLink: (url: string) => void
   onApiKeyInvalid: (callback: () => void) => () => void
   removeListener: (eventName: string, callback: (...args: any[]) => void) => void
+  
+  // CLI-specific methods with enhanced typing
+  checkGeminiCLIStatus: () => Promise<CLIStatus>
+  getGeminiCLIModels: () => Promise<CLIModelsResponse>
+  refreshCLIStatus: () => Promise<CLIStatus>
+  testCLIConnection: () => Promise<{ success: boolean; error?: CLIError }>
+  
+  // CLI operation methods
+  executeCLICommand: (command: string, args: string[], options?: {
+    timeout?: number;
+    retries?: number;
+  }) => Promise<{
+    success: boolean;
+    stdout?: string;
+    stderr?: string;
+    error?: CLIError;
+  }>
 }
 
 declare global {
