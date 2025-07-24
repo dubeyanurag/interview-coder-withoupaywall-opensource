@@ -7,6 +7,8 @@ import { ScreenshotHelper } from "./ScreenshotHelper"
 import { ShortcutsHelper } from "./shortcuts"
 import { initAutoUpdater } from "./autoUpdater"
 import { configHelper } from "./ConfigHelper"
+import type { APIProvider, Config } from "./CLITypes"
+import type { IPC_CHANNELS } from "./IPCTypes"
 import * as dotenv from "dotenv"
 
 // Constants

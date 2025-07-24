@@ -12,7 +12,7 @@ import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Settings } from "lucide-react";
 import { useToast } from "../../contexts/toast";
-import type { APIProvider, Config, ConfigUpdate, CLIStatus, CLIModelsResponse } from "../../../electron/CLITypes";
+import type { APIProvider, Config, ConfigUpdate, CLIStatus, CLIModelsResponse } from "../../types/cli";
 
 type AIModel = {
   id: string;
@@ -289,7 +289,12 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
             isInstalled: status.isInstalled,
             isAuthenticated: status.isAuthenticated,
             version: status.version,
+            authMethod: status.authMethod,
             error: status.error,
+            errorCategory: status.errorCategory,
+            errorSeverity: status.errorSeverity,
+            actionableSteps: status.actionableSteps,
+            helpUrl: status.helpUrl,
             isLoading: false
           });
         })
@@ -393,12 +398,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
     setIsLoading(true);
     try {
       const configUpdate: any = {
-        apiKey,
         apiProvider,
         extractionModel,
         solutionModel,
         debuggingModel,
       };
+
+      // Only include API key for non-CLI providers
+      if (apiProvider !== "gemini-cli") {
+        configUpdate.apiKey = apiKey;
+      }
 
       // Include CLI-specific settings if Gemini CLI is selected
       if (apiProvider === "gemini-cli") {
@@ -461,7 +470,10 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
         <DialogHeader>
           <DialogTitle>API Settings</DialogTitle>
           <DialogDescription className="text-white/70">
-            Configure your API key and model preferences. You'll need your own API key to use this application.
+            {apiProvider === "gemini-cli" 
+              ? "Configure your model preferences and CLI settings. Authentication is handled through the Gemini CLI."
+              : "Configure your API key and model preferences. You'll need your own API key to use this application."
+            }
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -552,87 +564,91 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
             </div>
           </div>
           
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-white" htmlFor="apiKey">
-            {apiProvider === "openai" ? "OpenAI API Key" : 
-             apiProvider === "gemini" ? "Gemini API Key" : 
-             apiProvider === "gemini-cli" ? "Gemini API Key" :
-             "Anthropic API Key"}
-            </label>
-            <Input
-              id="apiKey"
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder={
-                apiProvider === "openai" ? "sk-..." : 
-                apiProvider === "gemini" ? "Enter your Gemini API key" :
-                apiProvider === "gemini-cli" ? "Enter your Gemini API key" :
-                "sk-ant-..."
-              }
-              className="bg-black/50 border-white/10 text-white"
-            />
-            {apiKey && (
-              <p className="text-xs text-white/50">
-                Current: {maskApiKey(apiKey)}
-              </p>
-            )}
-            <p className="text-xs text-white/50">
-              Your API key is stored locally and never sent to any server except {apiProvider === "openai" ? "OpenAI" : apiProvider === "anthropic" ? "Anthropic" : "Google"}
-            </p>
-            <div className="mt-2 p-2 rounded-md bg-white/5 border border-white/10">
-              <p className="text-xs text-white/80 mb-1">Don't have an API key?</p>
-              {apiProvider === "openai" ? (
-                <>
-                  <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
-                    onClick={() => openExternalLink('https://platform.openai.com/signup')} 
-                    className="text-blue-400 hover:underline cursor-pointer">OpenAI</button>
-                  </p>
-                  <p className="text-xs text-white/60 mb-1">2. Go to <button 
-                    onClick={() => openExternalLink('https://platform.openai.com/api-keys')} 
-                    className="text-blue-400 hover:underline cursor-pointer">API Keys</button> section
-                  </p>
-                  <p className="text-xs text-white/60">3. Create a new secret key and paste it here</p>
-                </>
-              ) : apiProvider === "gemini" || apiProvider === "gemini-cli" ?  (
-                <>
-                  <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
-                    onClick={() => openExternalLink('https://aistudio.google.com/')} 
-                    className="text-blue-400 hover:underline cursor-pointer">Google AI Studio</button>
-                  </p>
-                  <p className="text-xs text-white/60 mb-1">2. Go to the <button 
-                    onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')} 
-                    className="text-blue-400 hover:underline cursor-pointer">API Keys</button> section
-                  </p>
-                  <p className="text-xs text-white/60">3. Create a new API key and paste it here</p>
-                  {apiProvider === "gemini-cli" && (
-                    <p className="text-xs text-white/60 mt-1">4. Install the <button 
-                      onClick={() => openExternalLink('https://ai.google.dev/gemini-api/docs/cli')} 
-                      className="text-blue-400 hover:underline cursor-pointer">Gemini CLI</button> tool
-                    </p>
-                  )}
-                </>
-              ) : (
-                <>
-                  <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
-                    onClick={() => openExternalLink('https://console.anthropic.com/signup')} 
-                    className="text-blue-400 hover:underline cursor-pointer">Anthropic</button>
-                  </p>
-                  <p className="text-xs text-white/60 mb-1">2. Go to the <button 
-                    onClick={() => openExternalLink('https://console.anthropic.com/settings/keys')} 
-                    className="text-blue-400 hover:underline cursor-pointer">API Keys</button> section
-                  </p>
-                  <p className="text-xs text-white/60">3. Create a new API key and paste it here</p>
-                </>
+          {/* API Key section - only show for non-CLI providers */}
+          {apiProvider !== "gemini-cli" && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-white" htmlFor="apiKey">
+              {apiProvider === "openai" ? "OpenAI API Key" : 
+               apiProvider === "gemini" ? "Gemini API Key" : 
+               "Anthropic API Key"}
+              </label>
+              <Input
+                id="apiKey"
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={
+                  apiProvider === "openai" ? "sk-..." : 
+                  apiProvider === "gemini" ? "Enter your Gemini API key" :
+                  "sk-ant-..."
+                }
+                className="bg-black/50 border-white/10 text-white"
+              />
+              {apiKey && (
+                <p className="text-xs text-white/50">
+                  Current: {maskApiKey(apiKey)}
+                </p>
               )}
+              <p className="text-xs text-white/50">
+                Your API key is stored locally and never sent to any server except {apiProvider === "openai" ? "OpenAI" : apiProvider === "anthropic" ? "Anthropic" : "Google"}
+              </p>
+              <div className="mt-2 p-2 rounded-md bg-white/5 border border-white/10">
+                <p className="text-xs text-white/80 mb-1">Don't have an API key?</p>
+                {apiProvider === "openai" ? (
+                  <>
+                    <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
+                      onClick={() => openExternalLink('https://platform.openai.com/signup')} 
+                      className="text-blue-400 hover:underline cursor-pointer">OpenAI</button>
+                    </p>
+                    <p className="text-xs text-white/60 mb-1">2. Go to <button 
+                      onClick={() => openExternalLink('https://platform.openai.com/api-keys')} 
+                      className="text-blue-400 hover:underline cursor-pointer">API Keys</button> section
+                    </p>
+                    <p className="text-xs text-white/60">3. Create a new secret key and paste it here</p>
+                  </>
+                ) : apiProvider === "gemini" ? (
+                  <>
+                    <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
+                      onClick={() => openExternalLink('https://aistudio.google.com/')} 
+                      className="text-blue-400 hover:underline cursor-pointer">Google AI Studio</button>
+                    </p>
+                    <p className="text-xs text-white/60 mb-1">2. Go to the <button 
+                      onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')} 
+                      className="text-blue-400 hover:underline cursor-pointer">API Keys</button> section
+                    </p>
+                    <p className="text-xs text-white/60">3. Create a new API key and paste it here</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
+                      onClick={() => openExternalLink('https://console.anthropic.com/signup')} 
+                      className="text-blue-400 hover:underline cursor-pointer">Anthropic</button>
+                    </p>
+                    <p className="text-xs text-white/60 mb-1">2. Go to the <button 
+                      onClick={() => openExternalLink('https://console.anthropic.com/settings/keys')} 
+                      className="text-blue-400 hover:underline cursor-pointer">API Keys</button> section
+                    </p>
+                    <p className="text-xs text-white/60">3. Create a new API key and paste it here</p>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* CLI-specific configuration section */}
           {apiProvider === "gemini-cli" && (
             <div className="space-y-4 mt-4">
               <div className="border-t border-white/10 pt-4">
                 <label className="text-sm font-medium text-white mb-3 block">Gemini CLI Configuration</label>
+                
+                {/* Authentication Note */}
+                <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                  <p className="text-sm font-medium text-blue-400 mb-1">Authentication</p>
+                  <p className="text-xs text-blue-300/80">
+                    The Gemini CLI provider uses CLI-based authentication. No API key is required here. 
+                    Authentication is handled through your local Gemini CLI installation.
+                  </p>
+                </div>
                 
                 {/* CLI Status Indicator */}
                 <div className="bg-black/30 border border-white/10 rounded-lg p-3 mb-4">
@@ -665,6 +681,9 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                       <span className="text-xs text-white/80">
                         Authentication: {cliStatus.isAuthenticated ? 'Authenticated' : 'Not Authenticated'}
                       </span>
+                      {cliStatus.authMethod && (
+                        <span className="text-xs text-white/60">({cliStatus.authMethod})</span>
+                      )}
                     </div>
                     
                     {/* Error Message with Structured Information */}
@@ -1310,7 +1329,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
           <Button
             className="px-4 py-3 bg-white text-black rounded-xl font-medium hover:bg-white/90 transition-colors"
             onClick={handleSave}
-            disabled={isLoading || !apiKey}
+            disabled={isLoading || (apiProvider !== "gemini-cli" && !apiKey)}
           >
             {isLoading ? "Saving..." : "Save Settings"}
           </Button>

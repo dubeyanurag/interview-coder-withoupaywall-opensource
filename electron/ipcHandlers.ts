@@ -4,6 +4,23 @@ import { ipcMain, shell, dialog } from "electron"
 import { randomBytes } from "crypto"
 import { IIpcHandlerDeps } from "./main"
 import { configHelper } from "./ConfigHelper"
+import type { 
+  APIProvider, 
+  Config, 
+  ConfigUpdate, 
+  CLIStatus, 
+  CLIModelsResponse 
+} from "./CLITypes"
+import type { 
+  IPC_CHANNELS,
+  GetConfigResponse,
+  UpdateConfigRequest,
+  UpdateConfigResponse,
+  ValidateApiKeyRequest,
+  ValidateApiKeyResponse,
+  CheckGeminiCLIStatusResponse,
+  GetGeminiCLIModelsResponse
+} from "./IPCTypes"
 
 export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   console.log("Initializing IPC handlers")

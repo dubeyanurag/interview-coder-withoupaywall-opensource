@@ -6,7 +6,7 @@ import type {
   CLIStatus, 
   CLIModelsResponse,
   CLIError 
-} from '../../electron/CLITypes';
+} from './cli';
 
 export interface ElectronAPI {
   // Original methods

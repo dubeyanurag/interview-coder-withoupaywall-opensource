@@ -10,6 +10,10 @@ import { configHelper } from "./ConfigHelper"
 import Anthropic from '@anthropic-ai/sdk';
 import { spawn, ChildProcess } from "child_process";
 import { 
+  APIProvider,
+  Config,
+  CLIStatus,
+  CLIExecutionResult,
   CLIError, 
   CLIErrorCategory, 
   CLIErrorSeverity,
@@ -19,7 +23,7 @@ import {
   isErrorRetryable,
   formatErrorForUser,
   getRetryDelay
-} from "./CLIErrorTypes";
+} from "./CLITypes";
 
 // Interface for Gemini API requests
 interface GeminiMessage {
@@ -579,7 +583,7 @@ export class ProcessingHelper {
     if (!this.isCLIProviderReady()) {
       const cliState = this.getCLIClientState();
       let errorMessage = 'CLI provider not ready';
-      let errorCode = CLI_ERROR_CODES.EXEC_COMMAND_FAILED;
+      let errorCode: string = CLI_ERROR_CODES.EXEC_COMMAND_FAILED;
       
       if (!cliState.isInstalled) {
         errorMessage = 'Gemini CLI is not installed';

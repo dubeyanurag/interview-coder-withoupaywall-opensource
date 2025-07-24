@@ -236,7 +236,11 @@ const electronAPI = {
       ipcRenderer.removeListener("delete-last-screenshot", subscription)
     }
   },
-  deleteLastScreenshot: () => ipcRenderer.invoke("delete-last-screenshot")
+  deleteLastScreenshot: () => ipcRenderer.invoke("delete-last-screenshot"),
+  
+  // CLI-specific methods
+  checkGeminiCLIStatus: () => ipcRenderer.invoke("check-gemini-cli-status"),
+  getGeminiCLIModels: () => ipcRenderer.invoke("get-gemini-cli-models")
 }
 
 // Before exposing the API

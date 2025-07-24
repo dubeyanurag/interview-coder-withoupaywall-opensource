@@ -11,3 +11,17 @@ export interface Solution {
   description: string
   code: string
 }
+
+// Re-export CLI types for convenience
+export type {
+  APIProvider,
+  Config,
+  ConfigUpdate,
+  CLIStatus,
+  CLIModelsResponse,
+  CLIError,
+  CLIErrorCategory,
+  CLIErrorSeverity,
+  AIModel,
+  ModelCategory
+} from './cli';

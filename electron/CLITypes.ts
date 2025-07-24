@@ -16,6 +16,7 @@ export interface CLIStatus {
   isAuthenticated: boolean;
   version?: string;
   isCompatible: boolean;
+  authMethod?: string;
   error?: string;
   errorCategory?: CLIErrorCategory;
   errorSeverity?: CLIErrorSeverity;
