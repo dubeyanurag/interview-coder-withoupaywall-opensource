@@ -11,6 +11,20 @@ import type { APIProvider, Config } from "./CLITypes"
 import type { IPC_CHANNELS } from "./IPCTypes"
 import * as dotenv from "dotenv"
 
+/**
+ * Safe logging function that won't throw EPIPE errors
+ */
+function safeLog(...args: any[]): void {
+  try {
+    // Only log if stdout is writable
+    if (process.stdout && process.stdout.writable) {
+      console.log(...args);
+    }
+  } catch (error) {
+    // Silently ignore logging errors to prevent EPIPE crashes
+  }
+}
+
 // Constants
 const isDev = process.env.NODE_ENV === "development"
 
@@ -244,7 +258,7 @@ async function createWindow(): Promise<void> {
 
   // Add more detailed logging for window events
   state.mainWindow.webContents.on("did-finish-load", () => {
-    console.log("Window finished loading")
+    safeLog("Window finished loading")
   })
   state.mainWindow.webContents.on(
     "did-fail-load",
@@ -264,22 +278,22 @@ async function createWindow(): Promise<void> {
 
   if (isDev) {
     // In development, load from the dev server
-    console.log("Loading from development server: http://localhost:54321")
+    safeLog("Loading from development server: http://localhost:54321")
     state.mainWindow.loadURL("http://localhost:54321").catch((error) => {
-      console.error("Failed to load dev server, falling back to local file:", error)
+      safeLog("Failed to load dev server, falling back to local file:", error)
       // Fallback to local file if dev server is not available
       const indexPath = path.join(__dirname, "../dist/index.html")
-      console.log("Falling back to:", indexPath)
+      safeLog("Falling back to:", indexPath)
       if (fs.existsSync(indexPath)) {
         state.mainWindow.loadFile(indexPath)
       } else {
-        console.error("Could not find index.html in dist folder")
+        safeLog("Could not find index.html in dist folder")
       }
     })
   } else {
     // In production, load from the built files
     const indexPath = path.join(__dirname, "../dist/index.html")
-    console.log("Loading production build:", indexPath)
+    safeLog("Loading production build:", indexPath)
     
     if (fs.existsSync(indexPath)) {
       state.mainWindow.loadFile(indexPath)
@@ -352,17 +366,17 @@ async function createWindow(): Promise<void> {
   // Set opacity based on user preferences or hide initially
   // Ensure the window is visible for the first launch or if opacity > 0.1
   const savedOpacity = configHelper.getOpacity();
-  console.log(`Initial opacity from config: ${savedOpacity}`);
+  safeLog(`Initial opacity from config: ${savedOpacity}`);
   
   // Always make sure window is shown first
   state.mainWindow.showInactive(); // Use showInactive for consistency
   
   if (savedOpacity <= 0.1) {
-    console.log('Initial opacity too low, setting to 0 and hiding window');
+    safeLog('Initial opacity too low, setting to 0 and hiding window');
     state.mainWindow.setOpacity(0);
     state.isWindowVisible = false;
   } else {
-    console.log(`Setting initial opacity to ${savedOpacity}`);
+    safeLog(`Setting initial opacity to ${savedOpacity}`);
     state.mainWindow.setOpacity(savedOpacity);
     state.isWindowVisible = true;
   }
@@ -398,7 +412,7 @@ function hideMainWindow(): void {
     state.mainWindow.setIgnoreMouseEvents(true, { forward: true });
     state.mainWindow.setOpacity(0);
     state.isWindowVisible = false;
-    console.log('Window hidden, opacity set to 0');
+    safeLog('Window hidden, opacity set to 0');
   }
 }
 
@@ -420,12 +434,12 @@ function showMainWindow(): void {
     state.mainWindow.showInactive(); // Use showInactive instead of show+focus
     state.mainWindow.setOpacity(1); // Then set opacity to 1 after showing
     state.isWindowVisible = true;
-    console.log('Window shown with showInactive(), opacity set to 1');
+    safeLog('Window shown with showInactive(), opacity set to 1');
   }
 }
 
 function toggleMainWindow(): void {
-  console.log(`Toggling window. Current state: ${state.isWindowVisible ? 'visible' : 'hidden'}`);
+  safeLog(`Toggling window. Current state: ${state.isWindowVisible ? 'visible' : 'hidden'}`);
   if (state.isWindowVisible) {
     hideMainWindow();
   } else {
@@ -492,16 +506,16 @@ function setWindowDimensions(width: number, height: number): void {
 // Environment setup
 function loadEnvVariables() {
   if (isDev) {
-    console.log("Loading env variables from:", path.join(process.cwd(), ".env"))
+    safeLog("Loading env variables from:", path.join(process.cwd(), ".env"))
     dotenv.config({ path: path.join(process.cwd(), ".env") })
   } else {
-    console.log(
+    safeLog(
       "Loading env variables from:",
       path.join(process.resourcesPath, ".env")
     )
     dotenv.config({ path: path.join(process.resourcesPath, ".env") })
   }
-  console.log("Environment variables loaded for open-source version")
+  safeLog("Environment variables loaded for open-source version")
 }
 
 // Initialize application
@@ -529,7 +543,7 @@ async function initializeApp() {
     
     // Ensure a configuration file exists
     if (!configHelper.hasApiKey()) {
-      console.log("No API key found in configuration. User will need to set up.")
+      safeLog("No API key found in configuration. User will need to set up.")
     }
     
     initializeHelpers()

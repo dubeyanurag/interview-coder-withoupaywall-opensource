@@ -15,6 +15,20 @@ import {
   formatErrorForUser
 } from "./CLITypes"
 
+/**
+ * Safe logging function that won't throw EPIPE errors
+ */
+function safeLog(...args: any[]): void {
+  try {
+    // Only log if stdout is writable
+    if (process.stdout && process.stdout.writable) {
+      console.log(...args);
+    }
+  } catch (error) {
+    // Silently ignore logging errors to prevent EPIPE crashes
+  }
+}
+
 export class ConfigHelper extends EventEmitter {
   private configPath: string;
   private defaultConfig: Config = {
@@ -38,9 +52,9 @@ export class ConfigHelper extends EventEmitter {
     // Use the app's user data directory to store the config
     try {
       this.configPath = path.join(app.getPath('userData'), 'config.json');
-      console.log('Config path:', this.configPath);
+      safeLog('Config path:', this.configPath);
     } catch (err) {
-      console.warn('Could not access user data path, using fallback');
+      safeLog('Could not access user data path, using fallback');
       this.configPath = path.join(process.cwd(), 'config.json');
     }
 
@@ -122,7 +136,7 @@ export class ConfigHelper extends EventEmitter {
 
     // For other Gemini models, allow them but log a warning
     // The actual validation will happen at runtime when CLI models are fetched
-    console.log(`CLI model ${model} will be validated against available models at runtime`);
+    safeLog(`CLI model ${model} will be validated against available models at runtime`);
     return model;
   }
 
@@ -213,13 +227,13 @@ export class ConfigHelper extends EventEmitter {
         // If API key starts with "sk-", it's likely an OpenAI key
         if (updates.apiKey.trim().startsWith('sk-')) {
           provider = "openai";
-          console.log("Auto-detected OpenAI API key format");
+          safeLog("Auto-detected OpenAI API key format");
         } else if (updates.apiKey.trim().startsWith('sk-ant-')) {
           provider = "anthropic";
-          console.log("Auto-detected Anthropic API key format");
+          safeLog("Auto-detected Anthropic API key format");
         } else {
           provider = "gemini";
-          console.log("Using Gemini API key format (default)");
+          safeLog("Using Gemini API key format (default)");
         }
 
         // Update the provider in the updates object
@@ -292,10 +306,17 @@ export class ConfigHelper extends EventEmitter {
   }
 
   /**
-   * Check if the API key is configured
+   * Check if the API key is configured or if using CLI provider (which doesn't need API key)
    */
   public hasApiKey(): boolean {
     const config = this.loadConfig();
+    
+    // CLI provider doesn't require an API key
+    if (config.apiProvider === "gemini-cli") {
+      return true;
+    }
+    
+    // For other providers, check if API key exists
     return !!config.apiKey && config.apiKey.trim().length > 0;
   }
 
@@ -548,14 +569,14 @@ export class ConfigHelper extends EventEmitter {
       if (apiKey.trim().startsWith('sk-')) {
         if (apiKey.trim().startsWith('sk-ant-')) {
           provider = "anthropic";
-          console.log("Auto-detected Anthropic API key format for testing");
+          safeLog("Auto-detected Anthropic API key format for testing");
         } else {
           provider = "openai";
-          console.log("Auto-detected OpenAI API key format for testing");
+          safeLog("Auto-detected OpenAI API key format for testing");
         }
       } else {
         provider = "gemini";
-        console.log("Using Gemini API key format for testing (default)");
+        safeLog("Using Gemini API key format for testing (default)");
       }
     }
 

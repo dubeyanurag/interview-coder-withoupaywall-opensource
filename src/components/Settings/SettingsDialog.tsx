@@ -249,7 +249,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
       onOpenChange(newOpen);
     }
   };
-  
+
   // Load current config on dialog open
   useEffect(() => {
     if (open) {
@@ -281,7 +281,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
   useEffect(() => {
     if (open && apiProvider === "gemini-cli") {
       setCLIStatus(prev => ({ ...prev, isLoading: true }));
-      
+
       window.electronAPI
         .checkGeminiCLIStatus()
         .then((status) => {
@@ -315,7 +315,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
     if (open && apiProvider === "gemini-cli" && cliStatus.isInstalled && cliStatus.isAuthenticated && !cliStatus.isLoading) {
       setCLIModelsLoading(true);
       setCLIModelsError(undefined);
-      
+
       window.electronAPI
         .getGeminiCLIModels()
         .then((result) => {
@@ -348,7 +348,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
     if (apiProvider === "gemini-cli" && cliAvailableModels.length > 0) {
       // Check if current models are valid, if not, reset to first available model
       const firstAvailableModel = cliAvailableModels[0];
-      
+
       if (!cliAvailableModels.includes(extractionModel)) {
         setExtractionModel(firstAvailableModel);
       }
@@ -371,7 +371,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
   // Handle API provider change
   const handleProviderChange = (provider: APIProvider) => {
     setApiProvider(provider);
-    
+
     // Reset models to defaults when changing provider
     if (provider === "openai") {
       setExtractionModel("gpt-4o");
@@ -416,15 +416,24 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
       }
 
       const result = await window.electronAPI.updateConfig(configUpdate);
-      
+
       if (result) {
         showToast("Success", "Settings saved successfully", "success");
         handleOpenChange(false);
-        
-        // Force reload the app to apply the API key
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
+
+        // Only reload if we're changing API providers or API keys
+        // CLI provider doesn't need a reload since it doesn't use API keys
+        const needsReload = (
+          apiProvider !== "gemini-cli" &&
+          (configUpdate.apiKey || configUpdate.apiProvider)
+        );
+
+        if (needsReload) {
+          // Force reload the app to apply the API key changes
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        }
       }
     } catch (error) {
       console.error("Failed to save settings:", error);
@@ -447,7 +456,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent 
+      <DialogContent
         className="sm:max-w-md bg-black border border-white/10 text-white settings-dialog"
         style={{
           position: 'fixed',
@@ -466,11 +475,11 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
           animation: 'fadeIn 0.25s ease forwards',
           opacity: 0.98
         }}
-      >        
+      >
         <DialogHeader>
           <DialogTitle>API Settings</DialogTitle>
           <DialogDescription className="text-white/70">
-            {apiProvider === "gemini-cli" 
+            {apiProvider === "gemini-cli"
               ? "Configure your model preferences and CLI settings. Authentication is handled through the Gemini CLI."
               : "Configure your API key and model preferences. You'll need your own API key to use this application."
             }
@@ -482,18 +491,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
             <label className="text-sm font-medium text-white">API Provider</label>
             <div className="grid grid-cols-2 gap-2">
               <div
-                className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                  apiProvider === "openai"
-                    ? "bg-white/10 border border-white/20"
-                    : "bg-black/30 border border-white/5 hover:bg-white/5"
-                }`}
+                className={`p-2 rounded-lg cursor-pointer transition-colors ${apiProvider === "openai"
+                  ? "bg-white/10 border border-white/20"
+                  : "bg-black/30 border border-white/5 hover:bg-white/5"
+                  }`}
                 onClick={() => handleProviderChange("openai")}
               >
                 <div className="flex items-center gap-2">
                   <div
-                    className={`w-3 h-3 rounded-full ${
-                      apiProvider === "openai" ? "bg-white" : "bg-white/20"
-                    }`}
+                    className={`w-3 h-3 rounded-full ${apiProvider === "openai" ? "bg-white" : "bg-white/20"
+                      }`}
                   />
                   <div className="flex flex-col">
                     <p className="font-medium text-white text-sm">OpenAI</p>
@@ -502,18 +509,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                 </div>
               </div>
               <div
-                className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                  apiProvider === "gemini"
-                    ? "bg-white/10 border border-white/20"
-                    : "bg-black/30 border border-white/5 hover:bg-white/5"
-                }`}
+                className={`p-2 rounded-lg cursor-pointer transition-colors ${apiProvider === "gemini"
+                  ? "bg-white/10 border border-white/20"
+                  : "bg-black/30 border border-white/5 hover:bg-white/5"
+                  }`}
                 onClick={() => handleProviderChange("gemini")}
               >
                 <div className="flex items-center gap-2">
                   <div
-                    className={`w-3 h-3 rounded-full ${
-                      apiProvider === "gemini" ? "bg-white" : "bg-white/20"
-                    }`}
+                    className={`w-3 h-3 rounded-full ${apiProvider === "gemini" ? "bg-white" : "bg-white/20"
+                      }`}
                   />
                   <div className="flex flex-col">
                     <p className="font-medium text-white text-sm">Gemini</p>
@@ -522,18 +527,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                 </div>
               </div>
               <div
-                className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                  apiProvider === "anthropic"
-                    ? "bg-white/10 border border-white/20"
-                    : "bg-black/30 border border-white/5 hover:bg-white/5"
-                }`}
+                className={`p-2 rounded-lg cursor-pointer transition-colors ${apiProvider === "anthropic"
+                  ? "bg-white/10 border border-white/20"
+                  : "bg-black/30 border border-white/5 hover:bg-white/5"
+                  }`}
                 onClick={() => handleProviderChange("anthropic")}
               >
                 <div className="flex items-center gap-2">
                   <div
-                    className={`w-3 h-3 rounded-full ${
-                      apiProvider === "anthropic" ? "bg-white" : "bg-white/20"
-                    }`}
+                    className={`w-3 h-3 rounded-full ${apiProvider === "anthropic" ? "bg-white" : "bg-white/20"
+                      }`}
                   />
                   <div className="flex flex-col">
                     <p className="font-medium text-white text-sm">Claude</p>
@@ -542,18 +545,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                 </div>
               </div>
               <div
-                className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                  apiProvider === "gemini-cli"
-                    ? "bg-white/10 border border-white/20"
-                    : "bg-black/30 border border-white/5 hover:bg-white/5"
-                }`}
+                className={`p-2 rounded-lg cursor-pointer transition-colors ${apiProvider === "gemini-cli"
+                  ? "bg-white/10 border border-white/20"
+                  : "bg-black/30 border border-white/5 hover:bg-white/5"
+                  }`}
                 onClick={() => handleProviderChange("gemini-cli")}
               >
                 <div className="flex items-center gap-2">
                   <div
-                    className={`w-3 h-3 rounded-full ${
-                      apiProvider === "gemini-cli" ? "bg-white" : "bg-white/20"
-                    }`}
+                    className={`w-3 h-3 rounded-full ${apiProvider === "gemini-cli" ? "bg-white" : "bg-white/20"
+                      }`}
                   />
                   <div className="flex flex-col">
                     <p className="font-medium text-white text-sm">Gemini CLI</p>
@@ -563,14 +564,14 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
               </div>
             </div>
           </div>
-          
+
           {/* API Key section - only show for non-CLI providers */}
           {apiProvider !== "gemini-cli" && (
             <div className="space-y-2">
               <label className="text-sm font-medium text-white" htmlFor="apiKey">
-              {apiProvider === "openai" ? "OpenAI API Key" : 
-               apiProvider === "gemini" ? "Gemini API Key" : 
-               "Anthropic API Key"}
+                {apiProvider === "openai" ? "OpenAI API Key" :
+                  apiProvider === "gemini" ? "Gemini API Key" :
+                    "Anthropic API Key"}
               </label>
               <Input
                 id="apiKey"
@@ -578,9 +579,9 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={
-                  apiProvider === "openai" ? "sk-..." : 
-                  apiProvider === "gemini" ? "Enter your Gemini API key" :
-                  "sk-ant-..."
+                  apiProvider === "openai" ? "sk-..." :
+                    apiProvider === "gemini" ? "Enter your Gemini API key" :
+                      "sk-ant-..."
                 }
                 className="bg-black/50 border-white/10 text-white"
               />
@@ -596,36 +597,36 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                 <p className="text-xs text-white/80 mb-1">Don't have an API key?</p>
                 {apiProvider === "openai" ? (
                   <>
-                    <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
-                      onClick={() => openExternalLink('https://platform.openai.com/signup')} 
+                    <p className="text-xs text-white/60 mb-1">1. Create an account at <button
+                      onClick={() => openExternalLink('https://platform.openai.com/signup')}
                       className="text-blue-400 hover:underline cursor-pointer">OpenAI</button>
                     </p>
-                    <p className="text-xs text-white/60 mb-1">2. Go to <button 
-                      onClick={() => openExternalLink('https://platform.openai.com/api-keys')} 
+                    <p className="text-xs text-white/60 mb-1">2. Go to <button
+                      onClick={() => openExternalLink('https://platform.openai.com/api-keys')}
                       className="text-blue-400 hover:underline cursor-pointer">API Keys</button> section
                     </p>
                     <p className="text-xs text-white/60">3. Create a new secret key and paste it here</p>
                   </>
                 ) : apiProvider === "gemini" ? (
                   <>
-                    <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
-                      onClick={() => openExternalLink('https://aistudio.google.com/')} 
+                    <p className="text-xs text-white/60 mb-1">1. Create an account at <button
+                      onClick={() => openExternalLink('https://aistudio.google.com/')}
                       className="text-blue-400 hover:underline cursor-pointer">Google AI Studio</button>
                     </p>
-                    <p className="text-xs text-white/60 mb-1">2. Go to the <button 
-                      onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')} 
+                    <p className="text-xs text-white/60 mb-1">2. Go to the <button
+                      onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')}
                       className="text-blue-400 hover:underline cursor-pointer">API Keys</button> section
                     </p>
                     <p className="text-xs text-white/60">3. Create a new API key and paste it here</p>
                   </>
                 ) : (
                   <>
-                    <p className="text-xs text-white/60 mb-1">1. Create an account at <button 
-                      onClick={() => openExternalLink('https://console.anthropic.com/signup')} 
+                    <p className="text-xs text-white/60 mb-1">1. Create an account at <button
+                      onClick={() => openExternalLink('https://console.anthropic.com/signup')}
                       className="text-blue-400 hover:underline cursor-pointer">Anthropic</button>
                     </p>
-                    <p className="text-xs text-white/60 mb-1">2. Go to the <button 
-                      onClick={() => openExternalLink('https://console.anthropic.com/settings/keys')} 
+                    <p className="text-xs text-white/60 mb-1">2. Go to the <button
+                      onClick={() => openExternalLink('https://console.anthropic.com/settings/keys')}
                       className="text-blue-400 hover:underline cursor-pointer">API Keys</button> section
                     </p>
                     <p className="text-xs text-white/60">3. Create a new API key and paste it here</p>
@@ -640,16 +641,16 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
             <div className="space-y-4 mt-4">
               <div className="border-t border-white/10 pt-4">
                 <label className="text-sm font-medium text-white mb-3 block">Gemini CLI Configuration</label>
-                
+
                 {/* Authentication Note */}
                 <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
                   <p className="text-sm font-medium text-blue-400 mb-1">Authentication</p>
                   <p className="text-xs text-blue-300/80">
-                    The Gemini CLI provider uses CLI-based authentication. No API key is required here. 
+                    The Gemini CLI provider uses CLI-based authentication. No API key is required here.
                     Authentication is handled through your local Gemini CLI installation.
                   </p>
                 </div>
-                
+
                 {/* CLI Status Indicator */}
                 <div className="bg-black/30 border border-white/10 rounded-lg p-3 mb-4">
                   <div className="flex items-center justify-between mb-2">
@@ -658,13 +659,12 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                       <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2">
                     {/* Installation Status */}
                     <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${
-                        cliStatus.isInstalled ? 'bg-green-500' : 'bg-red-500'
-                      }`}></div>
+                      <div className={`w-2 h-2 rounded-full ${cliStatus.isInstalled ? 'bg-green-500' : 'bg-red-500'
+                        }`}></div>
                       <span className="text-xs text-white/80">
                         Installation: {cliStatus.isInstalled ? 'Installed' : 'Not Found'}
                       </span>
@@ -672,12 +672,11 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                         <span className="text-xs text-white/60">({cliStatus.version})</span>
                       )}
                     </div>
-                    
+
                     {/* Authentication Status */}
                     <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${
-                        cliStatus.isAuthenticated ? 'bg-green-500' : 'bg-red-500'
-                      }`}></div>
+                      <div className={`w-2 h-2 rounded-full ${cliStatus.isAuthenticated ? 'bg-green-500' : 'bg-red-500'
+                        }`}></div>
                       <span className="text-xs text-white/80">
                         Authentication: {cliStatus.isAuthenticated ? 'Authenticated' : 'Not Authenticated'}
                       </span>
@@ -685,7 +684,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                         <span className="text-xs text-white/60">({cliStatus.authMethod})</span>
                       )}
                     </div>
-                    
+
                     {/* Error Message with Structured Information */}
                     {cliStatus.error && (
                       <div className="mt-2 space-y-2">
@@ -695,19 +694,18 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                               {cliStatus.errorCategory ? `${cliStatus.errorCategory.charAt(0).toUpperCase() + cliStatus.errorCategory.slice(1)} Error` : 'Error'}
                             </span>
                             {cliStatus.errorSeverity && (
-                              <span className={`text-xs px-1 py-0.5 rounded ${
-                                cliStatus.errorSeverity === 'critical' ? 'bg-red-600/20 text-red-300' :
+                              <span className={`text-xs px-1 py-0.5 rounded ${cliStatus.errorSeverity === 'critical' ? 'bg-red-600/20 text-red-300' :
                                 cliStatus.errorSeverity === 'high' ? 'bg-orange-600/20 text-orange-300' :
-                                cliStatus.errorSeverity === 'medium' ? 'bg-yellow-600/20 text-yellow-300' :
-                                'bg-blue-600/20 text-blue-300'
-                              }`}>
+                                  cliStatus.errorSeverity === 'medium' ? 'bg-yellow-600/20 text-yellow-300' :
+                                    'bg-blue-600/20 text-blue-300'
+                                }`}>
                                 {cliStatus.errorSeverity}
                               </span>
                             )}
                           </div>
                           <p className="text-xs text-red-400">{cliStatus.error}</p>
                         </div>
-                        
+
                         {/* Actionable Steps */}
                         {cliStatus.actionableSteps && cliStatus.actionableSteps.length > 0 && (
                           <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded">
@@ -722,8 +720,8 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                             </ul>
                             {cliStatus.helpUrl && (
                               <div className="mt-2">
-                                <button 
-                                  onClick={() => openExternalLink(cliStatus.helpUrl!)} 
+                                <button
+                                  onClick={() => openExternalLink(cliStatus.helpUrl!)}
                                   className="text-xs text-blue-400 hover:underline cursor-pointer"
                                 >
                                   View documentation →
@@ -755,7 +753,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                       Maximum time to wait for CLI commands to complete (5-300 seconds)
                     </p>
                   </div>
-                  
+
                   <div>
                     <label className="text-sm font-medium text-white mb-1 block">
                       Max Retry Attempts
@@ -784,13 +782,13 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                       <div className="ml-2 mt-1 space-y-1">
                         <p>• Check Python: <code className="bg-black/30 px-1 rounded">python --version</code></p>
                         <p>• Check pip: <code className="bg-black/30 px-1 rounded">pip --version</code></p>
-                        <p>• If missing, download from <button 
-                          onClick={() => openExternalLink('https://python.org/downloads/')} 
+                        <p>• If missing, download from <button
+                          onClick={() => openExternalLink('https://python.org/downloads/')}
                           className="text-blue-400 hover:underline cursor-pointer"
                         >python.org</button></p>
                       </div>
                     </div>
-                    
+
                     <div>
                       <p className="font-medium text-blue-300">Step 2: Install Gemini CLI</p>
                       <code className="block bg-black/30 p-1 rounded text-xs font-mono text-blue-200 ml-2 mt-1">
@@ -803,7 +801,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                         <p>• Using pip3: <code className="bg-black/30 px-1 rounded">pip3 install google-generativeai[cli]</code></p>
                       </div>
                     </div>
-                    
+
                     <div>
                       <p className="font-medium text-blue-300">Step 3: Authenticate with Google</p>
                       <code className="block bg-black/30 p-1 rounded text-xs font-mono text-blue-200 ml-2 mt-1">
@@ -815,7 +813,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                         <p>• Complete the OAuth flow in the opened browser window</p>
                       </div>
                     </div>
-                    
+
                     <div>
                       <p className="font-medium text-blue-300">Step 4: Verify Setup</p>
                       <div className="ml-2 mt-1 space-y-1">
@@ -825,22 +823,22 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                         <p>• Test CLI: <code className="bg-black/30 px-1 rounded">gemini generate "Hello, world!"</code></p>
                       </div>
                     </div>
-                    
+
                     <div className="pt-2 border-t border-blue-500/20 flex flex-wrap gap-4">
-                      <button 
-                        onClick={() => openExternalLink('https://ai.google.dev/gemini-api/docs/cli')} 
+                      <button
+                        onClick={() => openExternalLink('https://ai.google.dev/gemini-api/docs/cli')}
                         className="text-blue-400 hover:underline cursor-pointer"
                       >
                         Full documentation →
                       </button>
-                      <button 
-                        onClick={() => openExternalLink('https://python.org/downloads/')} 
+                      <button
+                        onClick={() => openExternalLink('https://python.org/downloads/')}
                         className="text-blue-400 hover:underline cursor-pointer"
                       >
                         Download Python →
                       </button>
-                      <button 
-                        onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')} 
+                      <button
+                        onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')}
                         className="text-blue-400 hover:underline cursor-pointer"
                       >
                         Get API Key →
@@ -885,20 +883,20 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                           </ul>
                         </div>
                         <div className="mt-2 pt-2 border-t border-red-500/20 flex flex-wrap gap-4">
-                          <button 
-                            onClick={() => openExternalLink('https://ai.google.dev/gemini-api/docs/cli#installation')} 
+                          <button
+                            onClick={() => openExternalLink('https://ai.google.dev/gemini-api/docs/cli#installation')}
                             className="text-red-400 hover:underline cursor-pointer"
                           >
                             Installation guide →
                           </button>
-                          <button 
-                            onClick={() => openExternalLink('https://python.org/downloads/')} 
+                          <button
+                            onClick={() => openExternalLink('https://python.org/downloads/')}
                             className="text-red-400 hover:underline cursor-pointer"
                           >
                             Download Python →
                           </button>
-                          <button 
-                            onClick={() => openExternalLink('https://pypa.github.io/pipx/')} 
+                          <button
+                            onClick={() => openExternalLink('https://pypa.github.io/pipx/')}
                             className="text-red-400 hover:underline cursor-pointer"
                           >
                             Install pipx →
@@ -947,20 +945,20 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                           </ol>
                         </div>
                         <div className="mt-2 pt-2 border-t border-yellow-500/20 flex flex-wrap gap-4">
-                          <button 
-                            onClick={() => openExternalLink('https://ai.google.dev/gemini-api/docs/cli#authentication')} 
+                          <button
+                            onClick={() => openExternalLink('https://ai.google.dev/gemini-api/docs/cli#authentication')}
                             className="text-yellow-400 hover:underline cursor-pointer"
                           >
                             Authentication guide →
                           </button>
-                          <button 
-                            onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')} 
+                          <button
+                            onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')}
                             className="text-yellow-400 hover:underline cursor-pointer"
                           >
                             Check API access →
                           </button>
-                          <button 
-                            onClick={() => openExternalLink('https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com')} 
+                          <button
+                            onClick={() => openExternalLink('https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com')}
                             className="text-yellow-400 hover:underline cursor-pointer"
                           >
                             Enable API →
@@ -978,8 +976,8 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                         <p className="font-medium text-gray-300">Permission & Access Errors:</p>
                         <ul className="ml-3 space-y-1">
                           <li>• <strong>API Access:</strong> Verify your Google account has Gemini API access enabled</li>
-                          <li>• <strong>Cloud Console:</strong> Ensure the Generative Language API is enabled in <button 
-                            onClick={() => openExternalLink('https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com')} 
+                          <li>• <strong>Cloud Console:</strong> Ensure the Generative Language API is enabled in <button
+                            onClick={() => openExternalLink('https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com')}
                             className="text-blue-400 hover:underline cursor-pointer"
                           >Google Cloud Console</button></li>
                           <li>• <strong>Terms of Service:</strong> Accept all required Gemini API terms and conditions</li>
@@ -1002,8 +1000,8 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                         <ul className="ml-3 space-y-1">
                           <li>• <strong>Daily Quota:</strong> Check if you've exceeded daily API request limits</li>
                           <li>• <strong>Rate Limits:</strong> Wait 1-2 minutes if hitting rate limits (usually temporary)</li>
-                          <li>• <strong>Usage Monitoring:</strong> Monitor usage in <button 
-                            onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')} 
+                          <li>• <strong>Usage Monitoring:</strong> Monitor usage in <button
+                            onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')}
                             className="text-blue-400 hover:underline cursor-pointer"
                           >Google AI Studio</button></li>
                           <li>• <strong>Upgrade Plan:</strong> Consider upgrading if consistently hitting limits</li>
@@ -1021,20 +1019,20 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                         </ul>
                       </div>
                       <div className="mt-2 pt-2 border-t border-gray-500/20 flex flex-wrap gap-4">
-                        <button 
-                          onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')} 
+                        <button
+                          onClick={() => openExternalLink('https://aistudio.google.com/app/apikey')}
                           className="text-gray-400 hover:underline cursor-pointer"
                         >
                           Check API usage →
                         </button>
-                        <button 
-                          onClick={() => openExternalLink('https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com')} 
+                        <button
+                          onClick={() => openExternalLink('https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com')}
                           className="text-gray-400 hover:underline cursor-pointer"
                         >
                           Enable API →
                         </button>
-                        <button 
-                          onClick={() => openExternalLink('https://ai.google.dev/gemini-api/docs/troubleshooting')} 
+                        <button
+                          onClick={() => openExternalLink('https://ai.google.dev/gemini-api/docs/troubleshooting')}
                           className="text-gray-400 hover:underline cursor-pointer"
                         >
                           Troubleshooting docs →
@@ -1089,20 +1087,20 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                         </ul>
                       </div>
                       <div className="mt-2 pt-2 border-t border-purple-500/20 flex flex-wrap gap-4">
-                        <button 
-                          onClick={() => openExternalLink('https://ai.google.dev/gemini-api/docs/cli#troubleshooting')} 
+                        <button
+                          onClick={() => openExternalLink('https://ai.google.dev/gemini-api/docs/cli#troubleshooting')}
                           className="text-purple-400 hover:underline cursor-pointer"
                         >
                           CLI troubleshooting →
                         </button>
-                        <button 
-                          onClick={() => openExternalLink('https://pip.pypa.io/en/stable/topics/configuration/')} 
+                        <button
+                          onClick={() => openExternalLink('https://pip.pypa.io/en/stable/topics/configuration/')}
                           className="text-purple-400 hover:underline cursor-pointer"
                         >
                           Pip configuration →
                         </button>
-                        <button 
-                          onClick={() => openExternalLink('https://docs.python.org/3/using/index.html')} 
+                        <button
+                          onClick={() => openExternalLink('https://docs.python.org/3/using/index.html')}
                           className="text-purple-400 hover:underline cursor-pointer"
                         >
                           Python setup guide →
@@ -1148,56 +1146,56 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
               </div>
             </div>
           )}
-          
+
           <div className="space-y-2 mt-4">
             <label className="text-sm font-medium text-white mb-2 block">Keyboard Shortcuts</label>
             <div className="bg-black/30 border border-white/10 rounded-lg p-3">
               <div className="grid grid-cols-2 gap-y-2 text-xs">
                 <div className="text-white/70">Toggle Visibility</div>
                 <div className="text-white/90 font-mono">Ctrl+B / Cmd+B</div>
-                
+
                 <div className="text-white/70">Take Screenshot</div>
                 <div className="text-white/90 font-mono">Ctrl+H / Cmd+H</div>
-                
+
                 <div className="text-white/70">Process Screenshots</div>
                 <div className="text-white/90 font-mono">Ctrl+Enter / Cmd+Enter</div>
-                
+
                 <div className="text-white/70">Delete Last Screenshot</div>
                 <div className="text-white/90 font-mono">Ctrl+L / Cmd+L</div>
-                
+
                 <div className="text-white/70">Reset View</div>
                 <div className="text-white/90 font-mono">Ctrl+R / Cmd+R</div>
-                
+
                 <div className="text-white/70">Quit Application</div>
                 <div className="text-white/90 font-mono">Ctrl+Q / Cmd+Q</div>
-                
+
                 <div className="text-white/70">Move Window</div>
                 <div className="text-white/90 font-mono">Ctrl+Arrow Keys</div>
-                
+
                 <div className="text-white/70">Decrease Opacity</div>
                 <div className="text-white/90 font-mono">Ctrl+[ / Cmd+[</div>
-                
+
                 <div className="text-white/70">Increase Opacity</div>
                 <div className="text-white/90 font-mono">Ctrl+] / Cmd+]</div>
-                
+
                 <div className="text-white/70">Zoom Out</div>
                 <div className="text-white/90 font-mono">Ctrl+- / Cmd+-</div>
-                
+
                 <div className="text-white/70">Reset Zoom</div>
                 <div className="text-white/90 font-mono">Ctrl+0 / Cmd+0</div>
-                
+
                 <div className="text-white/70">Zoom In</div>
                 <div className="text-white/90 font-mono">Ctrl+= / Cmd+=</div>
               </div>
             </div>
           </div>
-          
+
           <div className="space-y-4 mt-4">
             <label className="text-sm font-medium text-white">AI Model Selection</label>
             <p className="text-xs text-white/60 -mt-3 mb-2">
               Select which models to use for each stage of the process
             </p>
-            
+
             {/* CLI Models Status */}
             {apiProvider === "gemini-cli" && (
               <div className="mb-4 p-3 bg-black/30 border border-white/10 rounded-lg">
@@ -1207,7 +1205,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                     <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
                   )}
                 </div>
-                
+
                 {cliModelsError ? (
                   <div className="p-2 bg-red-500/10 border border-red-500/20 rounded text-xs text-red-400">
                     {cliModelsError}
@@ -1227,7 +1225,7 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
                 )}
               </div>
             )}
-            
+
             {modelCategories.map((category) => {
               // Get the appropriate model list based on selected provider
               let models;
@@ -1249,58 +1247,54 @@ export function SettingsDialog({ open: externalOpen, onOpenChange }: SettingsDia
               } else {
                 models = category.anthropicModels;
               }
-              
+
               return (
                 <div key={category.key} className="mb-4">
                   <label className="text-sm font-medium text-white mb-1 block">
                     {category.title}
                   </label>
                   <p className="text-xs text-white/60 mb-2">{category.description}</p>
-                  
+
                   <div className="space-y-2">
                     {models.map((m) => {
                       // Determine which state to use based on category key
-                      const currentValue = 
+                      const currentValue =
                         category.key === 'extractionModel' ? extractionModel :
-                        category.key === 'solutionModel' ? solutionModel :
-                        debuggingModel;
-                      
+                          category.key === 'solutionModel' ? solutionModel :
+                            debuggingModel;
+
                       // Determine which setter function to use
-                      const setValue = 
+                      const setValue =
                         category.key === 'extractionModel' ? setExtractionModel :
-                        category.key === 'solutionModel' ? setSolutionModel :
-                        setDebuggingModel;
-                        
+                          category.key === 'solutionModel' ? setSolutionModel :
+                            setDebuggingModel;
+
                       const isValidModel = isModelValidForCLI(m.id);
                       const isDisabled = apiProvider === "gemini-cli" && !isValidModel && cliAvailableModels.length > 0;
-                      
+
                       return (
                         <div
                           key={m.id}
-                          className={`p-2 rounded-lg transition-colors ${
-                            isDisabled 
-                              ? "opacity-50 cursor-not-allowed bg-black/20 border border-white/5"
-                              : `cursor-pointer ${
-                                  currentValue === m.id
-                                    ? "bg-white/10 border border-white/20"
-                                    : "bg-black/30 border border-white/5 hover:bg-white/5"
-                                }`
-                          }`}
+                          className={`p-2 rounded-lg transition-colors ${isDisabled
+                            ? "opacity-50 cursor-not-allowed bg-black/20 border border-white/5"
+                            : `cursor-pointer ${currentValue === m.id
+                              ? "bg-white/10 border border-white/20"
+                              : "bg-black/30 border border-white/5 hover:bg-white/5"
+                            }`
+                            }`}
                           onClick={() => !isDisabled && setValue(m.id)}
                         >
                           <div className="flex items-center gap-2">
                             <div
-                              className={`w-3 h-3 rounded-full ${
-                                currentValue === m.id ? "bg-white" : "bg-white/20"
-                              }`}
+                              className={`w-3 h-3 rounded-full ${currentValue === m.id ? "bg-white" : "bg-white/20"
+                                }`}
                             />
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <p className="font-medium text-white text-xs">{m.name}</p>
                                 {apiProvider === "gemini-cli" && cliAvailableModels.length > 0 && (
-                                  <div className={`w-2 h-2 rounded-full ${
-                                    isValidModel ? 'bg-green-500' : 'bg-red-500'
-                                  }`} title={isValidModel ? 'Available via CLI' : 'Not available via CLI'}></div>
+                                  <div className={`w-2 h-2 rounded-full ${isValidModel ? 'bg-green-500' : 'bg-red-500'
+                                    }`} title={isValidModel ? 'Available via CLI' : 'Not available via CLI'}></div>
                                 )}
                               </div>
                               <p className="text-xs text-white/60">

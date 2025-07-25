@@ -9,13 +9,13 @@ import { OpenAI } from "openai"
 import { configHelper } from "./ConfigHelper"
 import Anthropic from '@anthropic-ai/sdk';
 import { spawn, ChildProcess } from "child_process";
-import { 
+import {
   APIProvider,
   Config,
   CLIStatus,
   CLIExecutionResult,
-  CLIError, 
-  CLIErrorCategory, 
+  CLIError,
+  CLIErrorCategory,
   CLIErrorSeverity,
   CLI_ERROR_CODES,
   createCLIError,
@@ -24,6 +24,20 @@ import {
   formatErrorForUser,
   getRetryDelay
 } from "./CLITypes";
+
+/**
+ * Safe logging function that won't throw EPIPE errors
+ */
+function safeLog(...args: any[]): void {
+  try {
+    // Only log if stdout is writable
+    if (process.stdout && process.stdout.writable) {
+      console.log(...args);
+    }
+  } catch (error) {
+    // Silently ignore logging errors to prevent EPIPE crashes
+  }
+}
 
 // Interface for Gemini API requests
 interface GeminiMessage {
@@ -81,7 +95,7 @@ export class ProcessingHelper {
   private openaiClient: OpenAI | null = null
   private geminiApiKey: string | null = null
   private anthropicClient: Anthropic | null = null
-  
+
   // CLI client state management
   private cliClientState: {
     isInitialized: boolean;
@@ -91,12 +105,12 @@ export class ProcessingHelper {
     lastChecked: number;
     error?: string;
   } = {
-    isInitialized: false,
-    isInstalled: false,
-    isAuthenticated: false,
-    availableModels: [],
-    lastChecked: 0
-  };
+      isInitialized: false,
+      isInstalled: false,
+      isAuthenticated: false,
+      availableModels: [],
+      lastChecked: 0
+    };
 
   // AbortControllers for API requests
   private currentProcessingAbortController: AbortController | null = null
@@ -105,12 +119,12 @@ export class ProcessingHelper {
   constructor(deps: IProcessingHelperDeps) {
     this.deps = deps
     this.screenshotHelper = deps.getScreenshotHelper()
-    
+
     // Initialize AI client based on config (async, but don't wait)
     this.initializeAIClient().catch(error => {
       console.error('Failed to initialize AI client in constructor:', error);
     });
-    
+
     // Listen for config changes to re-initialize the AI client
     configHelper.on('config-updated', () => {
       this.initializeAIClient().catch(error => {
@@ -118,37 +132,37 @@ export class ProcessingHelper {
       });
     });
   }
-  
+
   /**
    * Initialize or reinitialize the AI client with current config
    */
   private async initializeAIClient(): Promise<void> {
     try {
       const config = configHelper.loadConfig();
-      
+
       if (config.apiProvider === "openai") {
         if (config.apiKey) {
-          this.openaiClient = new OpenAI({ 
+          this.openaiClient = new OpenAI({
             apiKey: config.apiKey,
             timeout: 60000, // 60 second timeout
             maxRetries: 2   // Retry up to 2 times
           });
           this.geminiApiKey = null;
           this.anthropicClient = null;
-          console.log("OpenAI client initialized successfully");
+          safeLog("OpenAI client initialized successfully");
         } else {
           this.openaiClient = null;
           this.geminiApiKey = null;
           this.anthropicClient = null;
           console.warn("No API key available, OpenAI client not initialized");
         }
-      } else if (config.apiProvider === "gemini"){
+      } else if (config.apiProvider === "gemini") {
         // Gemini client initialization
         this.openaiClient = null;
         this.anthropicClient = null;
         if (config.apiKey) {
           this.geminiApiKey = config.apiKey;
-          console.log("Gemini API key set successfully");
+          safeLog("Gemini API key set successfully");
         } else {
           this.openaiClient = null;
           this.geminiApiKey = null;
@@ -165,7 +179,7 @@ export class ProcessingHelper {
             timeout: 60000,
             maxRetries: 2
           });
-          console.log("Anthropic client initialized successfully");
+          safeLog("Anthropic client initialized successfully");
         } else {
           this.openaiClient = null;
           this.geminiApiKey = null;
@@ -177,10 +191,10 @@ export class ProcessingHelper {
         this.openaiClient = null;
         this.geminiApiKey = null;
         this.anthropicClient = null;
-        
+
         // Initialize CLI client state
         await this.initializeCLIClient();
-        console.log("Gemini CLI provider initialized successfully");
+        safeLog("Gemini CLI provider initialized successfully");
       }
     } catch (error) {
       console.error("Failed to initialize AI client:", error);
@@ -209,7 +223,7 @@ export class ProcessingHelper {
       if (typeof configHelper.detectGeminiCLIInstallation === 'function') {
         const installationResult = await configHelper.detectGeminiCLIInstallation();
         this.cliClientState.isInstalled = installationResult.isInstalled;
-        
+
         if (!installationResult.isInstalled) {
           this.cliClientState.error = installationResult.error || 'Gemini CLI not installed';
           console.warn('Gemini CLI not installed:', this.cliClientState.error);
@@ -225,7 +239,7 @@ export class ProcessingHelper {
       if (typeof configHelper.validateGeminiCLIAuthentication === 'function') {
         const authResult = await configHelper.validateGeminiCLIAuthentication();
         this.cliClientState.isAuthenticated = authResult.isAuthenticated;
-        
+
         if (!authResult.isAuthenticated) {
           this.cliClientState.error = authResult.error || 'Gemini CLI not authenticated';
           console.warn('Gemini CLI not authenticated:', this.cliClientState.error);
@@ -241,7 +255,7 @@ export class ProcessingHelper {
       if (typeof configHelper.getGeminiCLIModels === 'function') {
         const modelsResult = await configHelper.getGeminiCLIModels();
         this.cliClientState.availableModels = modelsResult.models || [];
-        
+
         if (modelsResult.error) {
           console.warn('Error getting CLI models:', modelsResult.error);
           // Don't fail initialization if we can't get models - use defaults
@@ -255,8 +269,8 @@ export class ProcessingHelper {
       // Mark as successfully initialized
       this.cliClientState.isInitialized = true;
       this.cliClientState.error = undefined;
-      
-      console.log('CLI client state initialized successfully:', {
+
+      safeLog('CLI client state initialized successfully:', {
         installed: this.cliClientState.isInstalled,
         authenticated: this.cliClientState.isAuthenticated,
         models: this.cliClientState.availableModels.length
@@ -280,9 +294,9 @@ export class ProcessingHelper {
    * Check if CLI provider is ready for use
    */
   public isCLIProviderReady(): boolean {
-    return this.cliClientState.isInitialized && 
-           this.cliClientState.isInstalled && 
-           this.cliClientState.isAuthenticated;
+    return this.cliClientState.isInitialized &&
+      this.cliClientState.isInstalled &&
+      this.cliClientState.isAuthenticated;
   }
 
   /**
@@ -302,24 +316,28 @@ export class ProcessingHelper {
     return new Promise((resolve) => {
       const config = configHelper.loadConfig();
       const timeout = command.timeout || config.cliTimeout || 30000;
-      
+
       // Sanitize command arguments for security
       const sanitizedArgs = this.sanitizeCliArguments(command.args);
-      
-      console.log(`Executing Gemini CLI: ${command.command} ${sanitizedArgs.join(' ')}`);
-      
+
+      console.log(`Executing Gemini CLI: ${command.command} ${sanitizedArgs.map(arg => `"${arg}"`).join(' ')}`);
+      console.log(`CLI working directory: ${process.cwd()}`);
+      console.log(`CLI timeout: ${timeout}ms`);
+      console.log(`CLI args array:`, sanitizedArgs);
+
       // Spawn the CLI process
       const childProcess = spawn(command.command, sanitizedArgs, {
         stdio: 'pipe',
-        shell: true,
-        env: { ...process.env }
+        shell: false, // Use shell: false to prevent argument parsing issues
+        env: { ...process.env },
+        cwd: process.cwd() // Ensure CLI runs from the same directory where temp files are created
       });
-      
+
       let stdout = '';
       let stderr = '';
       let isResolved = false;
       let timeoutId: NodeJS.Timeout;
-      
+
       // Set up timeout handling
       const cleanup = () => {
         if (timeoutId) {
@@ -335,20 +353,20 @@ export class ProcessingHelper {
           }, 5000);
         }
       };
-      
+
       // Handle timeout
       timeoutId = setTimeout(() => {
         if (!isResolved) {
           isResolved = true;
           cleanup();
-          
+
           // Create structured timeout error
           const cliError = createCLIError(
             CLI_ERROR_CODES.EXEC_TIMEOUT,
             `Command timed out after ${timeout}ms`,
             `Command timed out after ${timeout}ms`
           );
-          
+
           resolve({
             success: false,
             error: `Command timed out after ${timeout}ms`,
@@ -357,21 +375,21 @@ export class ProcessingHelper {
           });
         }
       }, timeout);
-      
+
       // Handle abort signal
       if (signal) {
         signal.addEventListener('abort', () => {
           if (!isResolved) {
             isResolved = true;
             cleanup();
-            
+
             // Create structured abort error
             const cliError = createCLIError(
               CLI_ERROR_CODES.EXEC_COMMAND_FAILED,
               'Command was aborted by user',
               'Command was aborted'
             );
-            
+
             resolve({
               success: false,
               error: 'Command was aborted',
@@ -381,24 +399,33 @@ export class ProcessingHelper {
           }
         });
       }
-      
+
       // Collect stdout data
       childProcess.stdout?.on('data', (data: Buffer) => {
-        stdout += data.toString();
+        const chunk = data.toString();
+        stdout += chunk;
+        console.log(`CLI stdout chunk: ${chunk.substring(0, 100)}...`);
       });
-      
+
       // Collect stderr data
       childProcess.stderr?.on('data', (data: Buffer) => {
-        stderr += data.toString();
+        const chunk = data.toString();
+        stderr += chunk;
+        console.log(`CLI stderr chunk: ${chunk.substring(0, 100)}...`);
       });
-      
+
       // Handle process completion
       childProcess.on('close', (code: number | null) => {
+        console.log(`CLI process closed with code: ${code}`);
+        console.log(`CLI stdout length: ${stdout.length}`);
+        console.log(`CLI stderr length: ${stderr.length}`);
+
         if (!isResolved) {
           isResolved = true;
           cleanup();
-          
+
           if (code === 0) {
+            console.log(`CLI success - output: ${stdout.substring(0, 200)}...`);
             resolve({
               success: true,
               output: stdout.trim(),
@@ -407,8 +434,9 @@ export class ProcessingHelper {
           } else {
             // Categorize the error based on output and exit code
             const errorOutput = stderr.trim() || stdout.trim() || `Process exited with code ${code}`;
+            console.log(`CLI error - code: ${code}, output: ${errorOutput.substring(0, 200)}...`);
             const cliError = categorizeCLIError(errorOutput, code || -1, 'execution');
-            
+
             resolve({
               success: false,
               error: errorOutput,
@@ -418,16 +446,16 @@ export class ProcessingHelper {
           }
         }
       });
-      
+
       // Handle process errors
       childProcess.on('error', (error: Error) => {
         if (!isResolved) {
           isResolved = true;
           cleanup();
-          
+
           // Categorize process execution errors
           const cliError = categorizeCLIError(error.message, -1, 'process_error');
-          
+
           resolve({
             success: false,
             error: `Failed to execute command: ${error.message}`,
@@ -436,7 +464,7 @@ export class ProcessingHelper {
           });
         }
       });
-      
+
       // Send input if provided
       if (command.input && childProcess.stdin) {
         try {
@@ -448,20 +476,25 @@ export class ProcessingHelper {
       }
     });
   }
-  
+
   /**
    * Sanitize CLI arguments to prevent command injection
    */
   private sanitizeCliArguments(args: string[]): string[] {
-    return args.map(arg => {
-      // Remove or escape potentially dangerous characters
-      return arg
-        .replace(/[;&|`$(){}[\]<>]/g, '') // Remove shell metacharacters
-        .replace(/\s+/g, ' ') // Normalize whitespace
-        .trim();
+    return args.map((arg, index) => {
+      // For the prompt argument (after -p flag), minimal sanitization
+      const isPreviousArgPromptFlag = index > 0 && args[index - 1] === '-p';
+
+      if (isPreviousArgPromptFlag) {
+        // For prompt content, only remove the most dangerous characters
+        return arg.replace(/[;&|`$]/g, ''); // Remove only command injection characters
+      } else {
+        // For flags and other arguments, keep them as is
+        return arg;
+      }
     }).filter(arg => arg.length > 0); // Remove empty arguments
   }
-  
+
   // Circuit breaker state for CLI operations
   private cliCircuitBreaker: {
     failureCount: number;
@@ -470,36 +503,36 @@ export class ProcessingHelper {
     threshold: number;
     timeout: number;
   } = {
-    failureCount: 0,
-    lastFailureTime: 0,
-    state: 'closed',
-    threshold: 5, // Open circuit after 5 consecutive failures
-    timeout: 60000 // Keep circuit open for 1 minute
-  };
+      failureCount: 0,
+      lastFailureTime: 0,
+      state: 'closed',
+      threshold: 5, // Open circuit after 5 consecutive failures
+      timeout: 60000 // Keep circuit open for 1 minute
+    };
 
   /**
    * Check if CLI circuit breaker allows execution
    */
   private canExecuteCLI(): { allowed: boolean; reason?: string } {
     const now = Date.now();
-    
+
     switch (this.cliCircuitBreaker.state) {
       case 'closed':
         return { allowed: true };
-        
+
       case 'open':
         if (now - this.cliCircuitBreaker.lastFailureTime > this.cliCircuitBreaker.timeout) {
           this.cliCircuitBreaker.state = 'half-open';
           return { allowed: true };
         }
-        return { 
-          allowed: false, 
+        return {
+          allowed: false,
           reason: `CLI temporarily unavailable due to repeated failures. Will retry after ${Math.ceil((this.cliCircuitBreaker.timeout - (now - this.cliCircuitBreaker.lastFailureTime)) / 1000)} seconds.`
         };
-        
+
       case 'half-open':
         return { allowed: true };
-        
+
       default:
         return { allowed: true };
     }
@@ -523,7 +556,7 @@ export class ProcessingHelper {
       )) {
         this.cliCircuitBreaker.failureCount++;
         this.cliCircuitBreaker.lastFailureTime = Date.now();
-        
+
         if (this.cliCircuitBreaker.failureCount >= this.cliCircuitBreaker.threshold) {
           this.cliCircuitBreaker.state = 'open';
           console.warn(`CLI circuit breaker opened due to ${this.cliCircuitBreaker.failureCount} consecutive failures`);
@@ -556,7 +589,7 @@ export class ProcessingHelper {
   private async executeGeminiCLIWithRetry(command: GeminiCLICommand, signal?: AbortSignal): Promise<GeminiCLIResponse> {
     const config = configHelper.loadConfig();
     const maxRetries = config.cliMaxRetries || 3;
-    
+
     // Check circuit breaker before attempting execution
     const circuitCheck = this.canExecuteCLI();
     if (!circuitCheck.allowed) {
@@ -565,12 +598,12 @@ export class ProcessingHelper {
         circuitCheck.reason || 'CLI temporarily unavailable',
         circuitCheck.reason || 'CLI circuit breaker is open'
       );
-      
+
       this.sendProgressNotification(
         `CLI temporarily unavailable: ${circuitCheck.reason}`,
         'warning'
       );
-      
+
       return {
         success: false,
         error: circuitCheck.reason || 'CLI temporarily unavailable',
@@ -584,7 +617,7 @@ export class ProcessingHelper {
       const cliState = this.getCLIClientState();
       let errorMessage = 'CLI provider not ready';
       let errorCode: string = CLI_ERROR_CODES.EXEC_COMMAND_FAILED;
-      
+
       if (!cliState.isInstalled) {
         errorMessage = 'Gemini CLI is not installed';
         errorCode = CLI_ERROR_CODES.CLI_NOT_FOUND;
@@ -594,18 +627,18 @@ export class ProcessingHelper {
       } else if (cliState.error) {
         errorMessage = cliState.error;
       }
-      
+
       const cliError = createCLIError(errorCode, errorMessage);
       const errorInfo = formatErrorForUser(cliError);
-      
+
       this.sendProgressNotification(
         `CLI setup required: ${errorInfo.message}`,
         'error'
       );
-      
+
       // Record failure for circuit breaker
       this.recordCLIResult(false, cliError);
-      
+
       return {
         success: false,
         error: `${errorInfo.title}: ${errorInfo.message}`,
@@ -613,11 +646,11 @@ export class ProcessingHelper {
         cliError
       };
     }
-    
+
     let lastError: CLIError | undefined;
     let totalRetryTime = 0;
     const maxTotalRetryTime = 300000; // 5 minutes maximum total retry time
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         // Send progress notification for retry attempts
@@ -627,13 +660,13 @@ export class ProcessingHelper {
             'info'
           );
         }
-        
+
         const result = await this.executeGeminiCLI(command, signal);
-        
+
         if (result.success) {
           // Record success for circuit breaker
           this.recordCLIResult(true);
-          
+
           // Send success notification if this was a retry
           if (attempt > 1) {
             this.sendProgressNotification(
@@ -641,42 +674,42 @@ export class ProcessingHelper {
               'info'
             );
           }
-          
+
           return result;
         }
-        
+
         // Categorize the error for better handling
         const cliError = result.cliError || categorizeCLIError(
           result.error || 'Unknown CLI error',
           result.exitCode,
           attempt > 1 ? 'retry' : 'initial'
         );
-        
+
         lastError = cliError;
-        
+
         // Check if error is retryable using structured error handling
         if (isErrorRetryable(cliError)) {
           if (attempt < maxRetries) {
             const retryDelay = getRetryDelay(cliError, attempt);
-            
+
             // Check if total retry time would exceed maximum
             if (totalRetryTime + retryDelay > maxTotalRetryTime) {
               console.log(`Maximum total retry time (${maxTotalRetryTime}ms) would be exceeded, stopping retries`);
-              
+
               const timeoutError = createCLIError(
                 CLI_ERROR_CODES.EXEC_TIMEOUT,
                 `Maximum retry time exceeded (${maxTotalRetryTime}ms)`,
                 'Retry timeout exceeded'
               );
               const errorInfo = formatErrorForUser(timeoutError);
-              
+
               this.sendProgressNotification(
                 `Retry timeout exceeded: ${errorInfo.message}`,
                 'error'
               );
-              
+
               this.recordCLIResult(false, timeoutError);
-              
+
               return {
                 success: false,
                 error: `${errorInfo.title}: ${errorInfo.message}`,
@@ -684,19 +717,19 @@ export class ProcessingHelper {
                 cliError: timeoutError
               };
             }
-            
+
             // Enhanced logging with user feedback
             console.log(`CLI command failed (attempt ${attempt}/${maxRetries}), retrying in ${retryDelay}ms...`);
             console.log(`Error category: ${cliError.category}, severity: ${cliError.severity}`);
             console.log(`Error details: ${cliError.message}`);
-            
+
             // Send user-friendly progress notification
             const errorInfo = formatErrorForUser(cliError);
             this.sendProgressNotification(
               `${errorInfo.title}: Retrying in ${Math.ceil(retryDelay / 1000)} seconds... (${attempt}/${maxRetries})`,
               'warning'
             );
-            
+
             // Wait before retry with appropriate delay, but check for abort signal
             try {
               await this.delayWithAbortCheck(retryDelay, signal);
@@ -707,7 +740,7 @@ export class ProcessingHelper {
                 CLI_ERROR_CODES.EXEC_COMMAND_FAILED,
                 'Operation was aborted during retry delay'
               );
-              
+
               return {
                 success: false,
                 error: 'Operation was aborted',
@@ -715,14 +748,14 @@ export class ProcessingHelper {
                 cliError: abortError
               };
             }
-            
+
             // Check if operation was aborted during delay
             if (signal?.aborted) {
               const abortError = createCLIError(
                 CLI_ERROR_CODES.EXEC_COMMAND_FAILED,
                 'Operation was aborted during retry delay'
               );
-              
+
               return {
                 success: false,
                 error: 'Operation was aborted',
@@ -730,34 +763,34 @@ export class ProcessingHelper {
                 cliError: abortError
               };
             }
-            
+
             continue;
           }
         }
-        
+
         // Non-retryable error or max retries reached
         const errorInfo = formatErrorForUser(cliError);
-        
+
         // Record failure for circuit breaker
         this.recordCLIResult(false, cliError);
-        
+
         // Send final error notification with graceful degradation guidance
         this.sendProgressNotification(
           `CLI command failed: ${errorInfo.message}. Consider switching to a different API provider.`,
           'error'
         );
-        
+
         return {
           success: false,
           error: `${errorInfo.title}: ${errorInfo.message}`,
           exitCode: result.exitCode,
           cliError // Include structured error for advanced handling
         };
-        
+
       } catch (error: any) {
         const cliError = categorizeCLIError(error.message, -1, 'exception');
         lastError = cliError;
-        
+
         if (attempt === maxRetries) {
           const finalError = createCLIError(
             CLI_ERROR_CODES.EXEC_COMMAND_FAILED,
@@ -765,16 +798,16 @@ export class ProcessingHelper {
             `Failed after ${maxRetries} attempts: ${error.message}`
           );
           const errorInfo = formatErrorForUser(finalError);
-          
+
           // Record failure for circuit breaker
           this.recordCLIResult(false, finalError);
-          
+
           // Send final error notification with graceful degradation guidance
           this.sendProgressNotification(
             `CLI command failed after ${maxRetries} attempts: ${errorInfo.message}. Consider switching to a different API provider.`,
             'error'
           );
-          
+
           return {
             success: false,
             error: `${errorInfo.title}: ${errorInfo.message}`,
@@ -782,30 +815,30 @@ export class ProcessingHelper {
             cliError: finalError
           };
         }
-        
+
         console.log(`CLI execution error (attempt ${attempt}/${maxRetries}):`, error.message);
-        
+
         // Use structured error handling for retry delay
         const retryDelay = getRetryDelay(cliError, attempt);
-        
+
         // Check if total retry time would exceed maximum
         if (totalRetryTime + retryDelay > maxTotalRetryTime) {
           console.log(`Maximum total retry time (${maxTotalRetryTime}ms) would be exceeded, stopping retries`);
-          
+
           const timeoutError = createCLIError(
             CLI_ERROR_CODES.EXEC_TIMEOUT,
             `Maximum retry time exceeded (${maxTotalRetryTime}ms)`,
             'Retry timeout exceeded'
           );
           const errorInfo = formatErrorForUser(timeoutError);
-          
+
           this.sendProgressNotification(
             `Retry timeout exceeded: ${errorInfo.message}`,
             'error'
           );
-          
+
           this.recordCLIResult(false, timeoutError);
-          
+
           return {
             success: false,
             error: `${errorInfo.title}: ${errorInfo.message}`,
@@ -813,13 +846,13 @@ export class ProcessingHelper {
             cliError: timeoutError
           };
         }
-        
+
         // Send progress notification for exception-based retries
         this.sendProgressNotification(
           `CLI execution error: Retrying in ${Math.ceil(retryDelay / 1000)} seconds... (${attempt}/${maxRetries})`,
           'warning'
         );
-        
+
         try {
           await this.delayWithAbortCheck(retryDelay, signal);
           totalRetryTime += retryDelay;
@@ -829,7 +862,7 @@ export class ProcessingHelper {
             CLI_ERROR_CODES.EXEC_COMMAND_FAILED,
             'Operation was aborted during retry delay'
           );
-          
+
           return {
             success: false,
             error: 'Operation was aborted',
@@ -837,14 +870,14 @@ export class ProcessingHelper {
             cliError: abortError
           };
         }
-        
+
         // Check if operation was aborted during delay
         if (signal?.aborted) {
           const abortError = createCLIError(
             CLI_ERROR_CODES.EXEC_COMMAND_FAILED,
             'Operation was aborted during retry delay'
           );
-          
+
           return {
             success: false,
             error: 'Operation was aborted',
@@ -854,20 +887,20 @@ export class ProcessingHelper {
         }
       }
     }
-    
+
     // This should never be reached, but included for completeness
     const finalError = lastError || createCLIError(CLI_ERROR_CODES.EXEC_COMMAND_FAILED, `Failed after ${maxRetries} attempts`);
     const errorInfo = formatErrorForUser(finalError);
-    
+
     // Record failure for circuit breaker
     this.recordCLIResult(false, finalError);
-    
+
     // Send final error notification with graceful degradation guidance
     this.sendProgressNotification(
       `CLI command failed: ${errorInfo.message}. Consider switching to a different API provider.`,
       'error'
     );
-    
+
     return {
       success: false,
       error: `${errorInfo.title}: ${errorInfo.message}`,
@@ -881,25 +914,25 @@ export class ProcessingHelper {
    */
   private generateGracefulDegradationMessage(cliState: typeof this.cliClientState, operationType: 'extraction' | 'solution' | 'debugging'): string {
     const baseMessage = `Failed to process ${operationType} with Gemini CLI.`;
-    
+
     if (!cliState.isInstalled) {
       return `${baseMessage} The Gemini CLI is not installed. Please install it using: pip install google-generativeai[cli], then restart the application. You can also switch to a different API provider in Settings.`;
     }
-    
+
     if (!cliState.isAuthenticated) {
       return `${baseMessage} The Gemini CLI is not authenticated. Please run 'gemini auth login' in your terminal to authenticate, then try again. Alternatively, you can switch to a different API provider in Settings.`;
     }
-    
+
     if (cliState.error) {
       return `${baseMessage} CLI Error: ${cliState.error}. Please check your CLI installation and authentication, or switch to a different API provider in Settings.`;
     }
-    
+
     // Check circuit breaker state
     const circuitCheck = this.canExecuteCLI();
     if (!circuitCheck.allowed) {
       return `${baseMessage} ${circuitCheck.reason} You can wait for the CLI to become available again, or switch to a different API provider in Settings for immediate processing.`;
     }
-    
+
     return `${baseMessage} Please check your CLI installation and authentication, or switch to a different API provider in Settings.`;
   }
 
@@ -912,19 +945,19 @@ export class ProcessingHelper {
         reject(new Error('Operation aborted'));
         return;
       }
-      
+
       const timeout = setTimeout(() => {
         resolve();
       }, delayMs);
-      
+
       // Listen for abort signal during delay
       const abortHandler = () => {
         clearTimeout(timeout);
         reject(new Error('Operation aborted'));
       };
-      
+
       signal?.addEventListener('abort', abortHandler, { once: true });
-      
+
       // Clean up abort listener when delay completes
       timeout.unref();
       setTimeout(() => {
@@ -955,13 +988,13 @@ export class ProcessingHelper {
       timeoutId = setTimeout(() => {
         if (!isCompleted) {
           isCompleted = true;
-          
+
           // Send timeout notification to user
           this.sendProgressNotification(
             `${operationName} timed out after ${Math.ceil(timeoutMs / 1000)} seconds`,
             'error'
           );
-          
+
           reject(new Error(`${operationName} timed out after ${timeoutMs}ms`));
         }
       }, timeoutMs);
@@ -971,12 +1004,12 @@ export class ProcessingHelper {
         if (!isCompleted) {
           isCompleted = true;
           clearTimeout(timeoutId);
-          
+
           this.sendProgressNotification(
             `${operationName} was cancelled by user`,
             'info'
           );
-          
+
           reject(new Error(`${operationName} was aborted`));
         }
       };
@@ -1021,7 +1054,7 @@ export class ProcessingHelper {
     try {
       // Clean the output - remove any non-JSON content before/after JSON
       const cleanedOutput = this.extractJSONFromCLIOutput(rawOutput);
-      
+
       if (!cleanedOutput) {
         const cliError = createCLIError(
           CLI_ERROR_CODES.RESPONSE_INVALID_JSON,
@@ -1038,7 +1071,7 @@ export class ProcessingHelper {
 
       // Parse the JSON
       const parsedData = JSON.parse(cleanedOutput);
-      
+
       // Validate the parsed data structure
       const validationResult = this.validateCLIResponseStructure(parsedData);
       if (!validationResult.valid) {
@@ -1062,7 +1095,7 @@ export class ProcessingHelper {
     } catch (error: any) {
       // Handle specific JSON parsing errors with structured error types
       let cliError: CLIError;
-      
+
       if (error instanceof SyntaxError) {
         cliError = createCLIError(
           CLI_ERROR_CODES.RESPONSE_INVALID_JSON,
@@ -1076,7 +1109,7 @@ export class ProcessingHelper {
           `Failed to parse CLI response: ${error.message}`
         );
       }
-      
+
       const errorInfo = formatErrorForUser(cliError);
       return {
         success: false,
@@ -1092,7 +1125,7 @@ export class ProcessingHelper {
   private extractJSONFromCLIOutput(output: string): string | null {
     // Remove ANSI color codes and control characters
     const cleanOutput = output.replace(/\x1b\[[0-9;]*m/g, '').trim();
-    
+
     // Try to find JSON content between braces
     const jsonPatterns = [
       // Look for complete JSON objects
@@ -1105,7 +1138,7 @@ export class ProcessingHelper {
       const match = cleanOutput.match(pattern);
       if (match) {
         const potentialJson = match[0];
-        
+
         // Validate that it's actually valid JSON by trying to parse it
         try {
           JSON.parse(potentialJson);
@@ -1161,7 +1194,7 @@ export class ProcessingHelper {
     if (data.problem_statement !== undefined) {
       const requiredFields = ['problem_statement'];
       const optionalFields = ['constraints', 'example_input', 'example_output'];
-      
+
       for (const field of requiredFields) {
         if (!data[field] || typeof data[field] !== 'string') {
           return {
@@ -1170,7 +1203,7 @@ export class ProcessingHelper {
           };
         }
       }
-      
+
       // Validate optional fields if present
       for (const field of optionalFields) {
         if (data[field] !== undefined && typeof data[field] !== 'string') {
@@ -1180,7 +1213,7 @@ export class ProcessingHelper {
           };
         }
       }
-      
+
       return { valid: true };
     }
 
@@ -1197,14 +1230,14 @@ export class ProcessingHelper {
           error: "Code field must be a string"
         };
       }
-      
+
       if (data.thoughts && !Array.isArray(data.thoughts) && typeof data.thoughts !== 'string') {
         return {
           valid: false,
           error: "Thoughts field must be an array or string"
         };
       }
-      
+
       return { valid: true };
     }
 
@@ -1222,7 +1255,7 @@ export class ProcessingHelper {
    */
   private handleMalformedCLIResponse(rawOutput: string, originalError: string): { success: boolean; data?: any; error?: string; cliError?: CLIError } {
     console.warn("Attempting to recover from malformed CLI response:", originalError);
-    
+
     // Strategy 1: Try to extract any readable text content
     const textContent = this.extractTextFromMalformedResponse(rawOutput);
     if (textContent && textContent.length > 10) {
@@ -1290,7 +1323,7 @@ export class ProcessingHelper {
       `Failed to parse CLI response: ${originalError}. Raw output: ${rawOutput.substring(0, 200)}...`
     );
     const errorInfo = formatErrorForUser(cliError);
-    
+
     return {
       success: false,
       error: errorInfo.message,
@@ -1304,18 +1337,18 @@ export class ProcessingHelper {
   private extractTextFromMalformedResponse(output: string): string | null {
     // Remove ANSI codes and control characters
     let cleaned = output.replace(/\x1b\[[0-9;]*m/g, '').trim();
-    
+
     // Remove common CLI prefixes and formatting
     cleaned = cleaned.replace(/^(>|\$|#|\*|\-|\+)\s*/gm, '');
-    
+
     // Remove empty lines and excessive whitespace
     cleaned = cleaned.replace(/\n\s*\n/g, '\n').trim();
-    
+
     // If the cleaned content is substantial, return it
     if (cleaned.length > 10 && !cleaned.match(/^[\s\n\r]*$/)) {
       return cleaned;
     }
-    
+
     return null;
   }
 
@@ -1323,13 +1356,13 @@ export class ProcessingHelper {
   private readonly CLI_COMMAND_TEMPLATES = {
     EXTRACTION: {
       command: "gemini",
-      baseArgs: ["generate", "--model", "{model}", "--temperature", "0.2"],
+      baseArgs: [], // Let CLI use default model for now
       systemPrompt: "You are a coding challenge interpreter. Analyze the screenshot of the coding problem and extract all relevant information. Return the information in JSON format with these fields: problem_statement, constraints, example_input, example_output. Just return the structured JSON without any other text.",
       userPromptTemplate: "Extract the coding problem details from these screenshots. Return in JSON format. Preferred coding language we gonna use for this problem is {language}."
     },
     SOLUTION: {
-      command: "gemini", 
-      baseArgs: ["generate", "--model", "{model}", "--temperature", "0.2"],
+      command: "gemini",
+      baseArgs: [], // Let CLI use default model for now
       systemPrompt: "You are an expert coding interview assistant. Provide clear, optimal solutions with detailed explanations.",
       userPromptTemplate: `Generate a detailed solution for the following coding problem:
 
@@ -1359,7 +1392,7 @@ Your solution should be efficient, well-commented, and handle edge cases.`
     },
     DEBUG: {
       command: "gemini",
-      baseArgs: ["generate", "--model", "{model}", "--temperature", "0.2"],
+      baseArgs: [], // Let CLI use default model for now
       systemPrompt: `You are a coding interview assistant helping debug and improve solutions. Analyze these screenshots which include either error messages, incorrect outputs, or test cases, and provide detailed debugging help.
 
 Your response MUST follow this exact structure with these section headers (use ### for headers):
@@ -1388,76 +1421,131 @@ If you include code examples, use proper markdown code blocks with language spec
   };
 
   /**
-   * Format CLI command for different AI operations
+   * Save base64 image data to temporary PNG files for CLI processing
    */
-  private formatCLICommand(
+  private async saveImagesToTempFiles(imageDataList: string[]): Promise<string[]> {
+    const tempFiles: string[] = [];
+
+    for (let i = 0; i < imageDataList.length; i++) {
+      try {
+        const imageData = imageDataList[i];
+
+        // Generate unique filename with UUID to prevent conflicts
+        const uuid = Math.random().toString(36).substring(2, 10);
+        const filename = `temp_image_${i + 1}_${uuid}.png`;
+
+        // Convert base64 to buffer
+        const buffer = Buffer.from(imageData, 'base64');
+
+        // Write to temporary file in current directory
+        fs.writeFileSync(filename, buffer);
+
+        tempFiles.push(filename);
+        safeLog(`Created temporary image file: ${filename}`);
+      } catch (error) {
+        console.error(`Failed to save image ${i + 1} to temp file:`, error);
+        // Continue with other images even if one fails
+      }
+    }
+
+    return tempFiles;
+  }
+
+  /**
+   * Clean up temporary image files after CLI processing
+   */
+  private async cleanupTempFiles(tempFiles: string[]): Promise<void> {
+    for (const filename of tempFiles) {
+      try {
+        if (fs.existsSync(filename)) {
+          fs.unlinkSync(filename);
+          safeLog(`Cleaned up temporary file: ${filename}`);
+        }
+      } catch (error) {
+        console.error(`Failed to cleanup temp file ${filename}:`, error);
+        // Continue cleanup even if one file fails
+      }
+    }
+  }
+
+  /**
+   * Format CLI command for different AI operations with async image handling
+   */
+  private async formatCLICommand(
     operationType: 'EXTRACTION' | 'SOLUTION' | 'DEBUG',
     model: string,
     variables: Record<string, string> = {},
     imageDataList?: string[]
-  ): GeminiCLICommand {
+  ): Promise<{ command: GeminiCLICommand; tempFiles: string[] }> {
     const template = this.CLI_COMMAND_TEMPLATES[operationType];
     const config = configHelper.loadConfig();
-    
-    // Replace model placeholder in args
-    const args = template.baseArgs.map(arg => 
-      arg.replace('{model}', model)
-    );
-    
+
+    // Handle image processing for CLI
+    let tempFiles: string[] = [];
+    if (imageDataList && imageDataList.length > 0) {
+      tempFiles = await this.saveImagesToTempFiles(imageDataList);
+    }
+
+    // Start with base args (currently empty, using CLI default model)
+    const args = [...template.baseArgs];
+
     // Format user prompt with variables
     let userPrompt = template.userPromptTemplate;
     Object.entries(variables).forEach(([key, value]) => {
       const placeholder = `{${key}}`;
       userPrompt = userPrompt.replace(new RegExp(placeholder, 'g'), value || 'Not provided');
     });
-    
-    // Create the full prompt
+
+    // Create the full prompt with image file references
     const fullPrompt = this.formatCLIPrompt(
       template.systemPrompt,
       userPrompt,
-      imageDataList
+      tempFiles.length > 0 ? imageDataList : undefined,
+      tempFiles
     );
-    
-    return {
+
+    // Add the prompt as an argument with -p flag
+    args.push('-p', fullPrompt);
+
+    const command: GeminiCLICommand = {
       command: template.command,
       args: args,
-      input: fullPrompt,
+      input: undefined, // No stdin input needed for Gemini CLI
       timeout: config.cliTimeout || 30000
     };
+
+    return { command, tempFiles };
   }
 
   /**
    * Format prompt for CLI input with image data handling
    */
-  private formatCLIPrompt(systemPrompt: string, userPrompt: string, imageDataList?: string[]): string {
+  private formatCLIPrompt(systemPrompt: string, userPrompt: string, imageDataList?: string[], tempFiles?: string[]): string {
     let prompt = `${systemPrompt}\n\n${userPrompt}`;
-    
+
     // Handle image data for CLI input
-    if (imageDataList && imageDataList.length > 0) {
-      prompt += `\n\n[IMAGE DATA]`;
-      prompt += `\nNumber of images: ${imageDataList.length}`;
-      
-      // Add image data in a format that CLI can potentially process
-      // Note: This depends on CLI capabilities - some CLIs might support base64 input
-      imageDataList.forEach((imageData, index) => {
-        prompt += `\n\nImage ${index + 1}:`;
-        prompt += `\ndata:image/png;base64,${imageData.substring(0, 100)}...`;
-        prompt += `\n[Full image data available for processing]`;
+    if (imageDataList && imageDataList.length > 0 && tempFiles && tempFiles.length > 0) {
+      prompt += `\n\nPlease read and analyze the following image file(s):\n`;
+
+      // List the specific image files and ask CLI to read them
+      tempFiles.forEach((filePath, index) => {
+        const fileName = path.basename(filePath);
+        prompt += `- Read and analyze image file: ${fileName}\n`;
       });
-      
-      prompt += `\n\n[END IMAGE DATA]`;
-      prompt += `\n\nPlease analyze the provided images along with the text prompt above.`;
+
+      prompt += `\nThese are PNG image files containing screenshots of coding interview questions or problems. `;
+      prompt += `Please examine the content of these image files and analyze the coding problem shown in the screenshots.`;
     }
-    
+
     return prompt;
   }
 
   /**
    * Format CLI prompt for problem extraction
    */
-  private formatExtractionCLIPrompt(language: string, imageDataList: string[]): GeminiCLICommand {
+  private async formatExtractionCLIPrompt(language: string, imageDataList: string[]): Promise<{ command: GeminiCLICommand; tempFiles: string[] }> {
     const config = configHelper.loadConfig();
-    return this.formatCLICommand('EXTRACTION', config.extractionModel || "gemini-2.0-flash", {
+    return await this.formatCLICommand('EXTRACTION', config.extractionModel || "gemini-2.0-flash", {
       language: language
     }, imageDataList);
   }
@@ -1465,12 +1553,12 @@ If you include code examples, use proper markdown code blocks with language spec
   /**
    * Format CLI prompt for solution generation
    */
-  private formatSolutionCLIPrompt(
+  private async formatSolutionCLIPrompt(
     problemInfo: any,
     language: string
-  ): GeminiCLICommand {
+  ): Promise<{ command: GeminiCLICommand; tempFiles: string[] }> {
     const config = configHelper.loadConfig();
-    return this.formatCLICommand('SOLUTION', config.solutionModel || "gemini-2.0-flash", {
+    return await this.formatCLICommand('SOLUTION', config.solutionModel || "gemini-2.0-flash", {
       problem_statement: problemInfo.problem_statement || 'No problem statement provided',
       constraints: problemInfo.constraints || 'No specific constraints provided.',
       example_input: problemInfo.example_input || 'No example input provided.',
@@ -1482,13 +1570,13 @@ If you include code examples, use proper markdown code blocks with language spec
   /**
    * Format CLI prompt for debugging assistance
    */
-  private formatDebugCLIPrompt(
+  private async formatDebugCLIPrompt(
     problemInfo: any,
     language: string,
     imageDataList: string[]
-  ): GeminiCLICommand {
+  ): Promise<{ command: GeminiCLICommand; tempFiles: string[] }> {
     const config = configHelper.loadConfig();
-    return this.formatCLICommand('DEBUG', config.debuggingModel || "gemini-2.0-flash", {
+    return await this.formatCLICommand('DEBUG', config.debuggingModel || "gemini-2.0-flash", {
       problem_statement: problemInfo.problem_statement || 'No problem statement provided',
       language: language
     }, imageDataList);
@@ -1504,7 +1592,7 @@ If you include code examples, use proper markdown code blocks with language spec
         error: "Prompt cannot be empty"
       };
     }
-    
+
     // Check for minimum prompt length
     if (prompt.length < 10) {
       return {
@@ -1512,7 +1600,7 @@ If you include code examples, use proper markdown code blocks with language spec
         error: "Prompt too short - must be at least 10 characters"
       };
     }
-    
+
     // Check for maximum prompt length (CLI might have limits)
     const maxLength = 50000; // Reasonable limit for CLI input
     if (prompt.length > maxLength) {
@@ -1521,7 +1609,7 @@ If you include code examples, use proper markdown code blocks with language spec
         error: `Prompt too long - maximum ${maxLength} characters allowed`
       };
     }
-    
+
     // Check for potentially problematic characters that might break CLI
     const problematicChars = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/;
     if (problematicChars.test(prompt)) {
@@ -1530,7 +1618,7 @@ If you include code examples, use proper markdown code blocks with language spec
         error: "Prompt contains invalid control characters"
       };
     }
-    
+
     return { valid: true };
   }
 
@@ -1571,7 +1659,7 @@ If you include code examples, use proper markdown code blocks with language spec
       if (config.language) {
         return config.language;
       }
-      
+
       // Fallback to window variable if config doesn't have language
       const mainWindow = this.deps.getMainWindow()
       if (mainWindow) {
@@ -1592,7 +1680,7 @@ If you include code examples, use proper markdown code blocks with language spec
           console.warn("Could not get language from window", err);
         }
       }
-      
+
       // Default fallback
       return "python";
     } catch (error) {
@@ -1606,11 +1694,11 @@ If you include code examples, use proper markdown code blocks with language spec
     if (!mainWindow) return
 
     const config = configHelper.loadConfig();
-    
+
     // First verify we have a valid AI client
     if (config.apiProvider === "openai" && !this.openaiClient) {
       await this.initializeAIClient();
-      
+
       if (!this.openaiClient) {
         console.error("OpenAI client not initialized");
         mainWindow.webContents.send(
@@ -1620,7 +1708,7 @@ If you include code examples, use proper markdown code blocks with language spec
       }
     } else if (config.apiProvider === "gemini" && !this.geminiApiKey) {
       await this.initializeAIClient();
-      
+
       if (!this.geminiApiKey) {
         console.error("Gemini API key not initialized");
         mainWindow.webContents.send(
@@ -1631,7 +1719,7 @@ If you include code examples, use proper markdown code blocks with language spec
     } else if (config.apiProvider === "anthropic" && !this.anthropicClient) {
       // Add check for Anthropic client
       await this.initializeAIClient();
-      
+
       if (!this.anthropicClient) {
         console.error("Anthropic client not initialized");
         mainWindow.webContents.send(
@@ -1644,12 +1732,24 @@ If you include code examples, use proper markdown code blocks with language spec
       if (!this.isCLIProviderReady()) {
         // Try to re-initialize CLI client
         await this.initializeCLIClient();
-        
+
         if (!this.isCLIProviderReady()) {
-          console.error("Gemini CLI provider not ready:", this.cliClientState.error);
-          mainWindow.webContents.send(
-            this.deps.PROCESSING_EVENTS.API_KEY_INVALID
-          );
+          safeLog("Gemini CLI provider not ready:", this.cliClientState.error);
+
+          // Send more appropriate error based on CLI state
+          if (!this.cliClientState.isInstalled) {
+            // CLI not installed - this is a setup issue, not an API key issue
+            mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.INITIAL_SOLUTION_ERROR,
+              "Gemini CLI is not installed. Please install the Gemini CLI and configure it in settings.");
+          } else if (!this.cliClientState.isAuthenticated) {
+            // CLI not authenticated - this is an auth issue, not an API key issue  
+            mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.INITIAL_SOLUTION_ERROR,
+              "Gemini CLI is not authenticated. Please authenticate with your Google account.");
+          } else {
+            // Other CLI issues
+            mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.INITIAL_SOLUTION_ERROR,
+              this.cliClientState.error || "Gemini CLI provider is not ready. Please check your CLI configuration.");
+          }
           return;
         }
       }
@@ -1662,7 +1762,7 @@ If you include code examples, use proper markdown code blocks with language spec
       mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.INITIAL_START)
       const screenshotQueue = this.screenshotHelper.getScreenshotQueue()
       console.log("Processing main queue screenshots:", screenshotQueue)
-      
+
       // Check if the queue is empty
       if (!screenshotQueue || screenshotQueue.length === 0) {
         console.log("No screenshots found in queue");
@@ -1700,7 +1800,7 @@ If you include code examples, use proper markdown code blocks with language spec
 
         // Filter out any nulls from failed screenshots
         const validScreenshots = screenshots.filter(Boolean);
-        
+
         if (validScreenshots.length === 0) {
           throw new Error("Failed to load screenshot data");
         }
@@ -1708,8 +1808,18 @@ If you include code examples, use proper markdown code blocks with language spec
         const result = await this.processScreenshotsHelper(validScreenshots, signal)
 
         if (!result.success) {
-          console.log("Processing failed:", result.error)
-          if (result.error?.includes("API Key") || result.error?.includes("OpenAI") || result.error?.includes("Gemini")) {
+          safeLog("Processing failed:", result.error)
+
+          // Only send API_KEY_INVALID for actual API key issues, not CLI errors
+          const isApiKeyError = (
+            config.apiProvider !== "gemini-cli" && (
+              result.error?.includes("API Key") ||
+              result.error?.includes("OpenAI") ||
+              (result.error?.includes("Gemini") && result.error?.includes("API"))
+            )
+          );
+
+          if (isApiKeyError) {
             mainWindow.webContents.send(
               this.deps.PROCESSING_EVENTS.API_KEY_INVALID
             )
@@ -1760,12 +1870,12 @@ If you include code examples, use proper markdown code blocks with language spec
       const extraScreenshotQueue =
         this.screenshotHelper.getExtraScreenshotQueue()
       console.log("Processing extra queue screenshots:", extraScreenshotQueue)
-      
+
       // Check if the extra queue is empty
       if (!extraScreenshotQueue || extraScreenshotQueue.length === 0) {
         console.log("No extra screenshots found in queue");
         mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.NO_SCREENSHOTS);
-        
+
         return;
       }
 
@@ -1776,7 +1886,7 @@ If you include code examples, use proper markdown code blocks with language spec
         mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.NO_SCREENSHOTS);
         return;
       }
-      
+
       mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.DEBUG_START)
 
       // Initialize AbortController
@@ -1789,7 +1899,7 @@ If you include code examples, use proper markdown code blocks with language spec
           ...this.screenshotHelper.getScreenshotQueue(),
           ...existingExtraScreenshots
         ];
-        
+
         const screenshots = await Promise.all(
           allPaths.map(async (path) => {
             try {
@@ -1797,7 +1907,7 @@ If you include code examples, use proper markdown code blocks with language spec
                 console.warn(`Screenshot file does not exist: ${path}`);
                 return null;
               }
-              
+
               return {
                 path,
                 preview: await this.screenshotHelper.getImagePreview(path),
@@ -1809,14 +1919,14 @@ If you include code examples, use proper markdown code blocks with language spec
             }
           })
         )
-        
+
         // Filter out any nulls from failed screenshots
         const validScreenshots = screenshots.filter(Boolean);
-        
+
         if (validScreenshots.length === 0) {
           throw new Error("Failed to load screenshot data for debugging");
         }
-        
+
         console.log(
           "Combined screenshots for processing:",
           validScreenshots.map((s) => s.path)
@@ -1865,10 +1975,10 @@ If you include code examples, use proper markdown code blocks with language spec
       const config = configHelper.loadConfig();
       const language = await this.getLanguage();
       const mainWindow = this.deps.getMainWindow();
-      
+
       // Step 1: Extract problem info using AI Vision API (OpenAI or Gemini)
       const imageDataList = screenshots.map(screenshot => screenshot.data);
-      
+
       // Update the user on progress
       if (mainWindow) {
         mainWindow.webContents.send("processing-status", {
@@ -1878,12 +1988,12 @@ If you include code examples, use proper markdown code blocks with language spec
       }
 
       let problemInfo;
-      
+
       if (config.apiProvider === "openai") {
         // Verify OpenAI client
         if (!this.openaiClient) {
           this.initializeAIClient(); // Try to reinitialize
-          
+
           if (!this.openaiClient) {
             return {
               success: false,
@@ -1895,14 +2005,14 @@ If you include code examples, use proper markdown code blocks with language spec
         // Use OpenAI for processing
         const messages = [
           {
-            role: "system" as const, 
+            role: "system" as const,
             content: "You are a coding challenge interpreter. Analyze the screenshot of the coding problem and extract all relevant information. Return the information in JSON format with these fields: problem_statement, constraints, example_input, example_output. Just return the structured JSON without any other text."
           },
           {
             role: "user" as const,
             content: [
               {
-                type: "text" as const, 
+                type: "text" as const,
                 text: `Extract the coding problem details from these screenshots. Return in JSON format. Preferred coding language we gonna use for this problem is ${language}.`
               },
               ...imageDataList.map(data => ({
@@ -1934,7 +2044,7 @@ If you include code examples, use proper markdown code blocks with language spec
             error: "Failed to parse problem information. Please try again or use clearer screenshots."
           };
         }
-      } else if (config.apiProvider === "gemini")  {
+      } else if (config.apiProvider === "gemini") {
         // Use Gemini API
         if (!this.geminiApiKey) {
           return {
@@ -1976,13 +2086,13 @@ If you include code examples, use proper markdown code blocks with language spec
           );
 
           const responseData = response.data as GeminiResponse;
-          
+
           if (!responseData.candidates || responseData.candidates.length === 0) {
             throw new Error("Empty response from Gemini API");
           }
-          
+
           const responseText = responseData.candidates[0].content.parts[0].text;
-          
+
           // Handle when Gemini might wrap the JSON in markdown code blocks
           const jsonText = responseText.replace(/```json|```/g, '').trim();
           problemInfo = JSON.parse(jsonText);
@@ -1995,26 +2105,28 @@ If you include code examples, use proper markdown code blocks with language spec
         }
       } else if (config.apiProvider === "gemini-cli") {
         // Use Gemini CLI for processing
+        let tempFiles: string[] = [];
         try {
-          const cliCommand = this.formatExtractionCLIPrompt(language, imageDataList);
+          const { command: cliCommand, tempFiles: tempImageFiles } = await this.formatExtractionCLIPrompt(language, imageDataList);
+          tempFiles = tempImageFiles;
 
           const cliResult = await this.executeGeminiCLIWithRetry(cliCommand, signal);
-          
+
           if (!cliResult.success) {
             throw new Error(cliResult.error || "CLI command failed");
           }
 
           // Parse the CLI response
           const parseResult = this.parseCLIResponse(cliResult.output || "");
-          
+
           if (!parseResult.success) {
             // Try to recover from malformed response
             const recoveryResult = this.handleMalformedCLIResponse(cliResult.output || "", parseResult.error || "Unknown parsing error");
-            
+
             if (!recoveryResult.success) {
               throw new Error(recoveryResult.error || "Failed to parse CLI response");
             }
-            
+
             // Use recovered data if available
             problemInfo = recoveryResult.data?.content ? {
               problem_statement: recoveryResult.data.content,
@@ -2030,11 +2142,16 @@ If you include code examples, use proper markdown code blocks with language spec
           // Graceful degradation: provide helpful guidance based on CLI state
           const cliState = this.getCLIClientState();
           const degradationMessage = this.generateGracefulDegradationMessage(cliState, 'extraction');
-          
+
           return {
             success: false,
             error: degradationMessage
           };
+        } finally {
+          // Always cleanup temporary files
+          if (tempFiles.length > 0) {
+            await this.cleanupTempFiles(tempFiles);
+          }
         }
       } else if (config.apiProvider === "anthropic") {
         if (!this.anthropicClient) {
@@ -2097,7 +2214,7 @@ If you include code examples, use proper markdown code blocks with language spec
           };
         }
       }
-      
+
       // Update the user on progress
       if (mainWindow) {
         mainWindow.webContents.send("processing-status", {
@@ -2121,13 +2238,13 @@ If you include code examples, use proper markdown code blocks with language spec
         if (solutionsResult.success) {
           // Clear any existing extra screenshots before transitioning to solutions view
           this.screenshotHelper.clearExtraScreenshotQueue();
-          
+
           // Final progress update
           mainWindow.webContents.send("processing-status", {
             message: "Solution generated successfully",
             progress: 100
           });
-          
+
           mainWindow.webContents.send(
             this.deps.PROCESSING_EVENTS.SOLUTION_SUCCESS,
             solutionsResult.data
@@ -2149,7 +2266,7 @@ If you include code examples, use proper markdown code blocks with language spec
           error: "Processing was canceled by the user."
         };
       }
-      
+
       // Handle OpenAI API errors specifically
       if (error?.response?.status === 401) {
         return {
@@ -2169,9 +2286,9 @@ If you include code examples, use proper markdown code blocks with language spec
       }
 
       console.error("API Error Details:", error);
-      return { 
-        success: false, 
-        error: error.message || "Failed to process screenshots. Please try again." 
+      return {
+        success: false,
+        error: error.message || "Failed to process screenshots. Please try again."
       };
     }
   }
@@ -2225,7 +2342,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
 `;
 
       let responseContent;
-      
+
       if (config.apiProvider === "openai") {
         // OpenAI processing
         if (!this.openaiClient) {
@@ -2234,7 +2351,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
             error: "OpenAI API key not configured. Please check your settings."
           };
         }
-        
+
         // Send to OpenAI API
         const solutionResponse = await this.openaiClient.chat.completions.create({
           model: config.solutionModel || "gpt-4o",
@@ -2247,7 +2364,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
         });
 
         responseContent = solutionResponse.choices[0].message.content;
-      } else if (config.apiProvider === "gemini")  {
+      } else if (config.apiProvider === "gemini") {
         // Gemini processing
         if (!this.geminiApiKey) {
           return {
@@ -2255,7 +2372,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
             error: "Gemini API key not configured. Please check your settings."
           };
         }
-        
+
         try {
           // Create Gemini message structure
           const geminiMessages = [
@@ -2283,11 +2400,11 @@ Your solution should be efficient, well-commented, and handle edge cases.
           );
 
           const responseData = response.data as GeminiResponse;
-          
+
           if (!responseData.candidates || responseData.candidates.length === 0) {
             throw new Error("Empty response from Gemini API");
           }
-          
+
           responseContent = responseData.candidates[0].content.parts[0].text;
         } catch (error) {
           console.error("Error using Gemini API for solution:", error);
@@ -2304,7 +2421,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
             error: "Anthropic API key not configured. Please check your settings."
           };
         }
-        
+
         try {
           const messages = [
             {
@@ -2350,26 +2467,28 @@ Your solution should be efficient, well-commented, and handle edge cases.
         }
       } else if (config.apiProvider === "gemini-cli") {
         // Gemini CLI processing
+        let tempFiles: string[] = [];
         try {
-          const cliCommand = this.formatSolutionCLIPrompt(problemInfo, language);
+          const { command: cliCommand, tempFiles: tempImageFiles } = await this.formatSolutionCLIPrompt(problemInfo, language);
+          tempFiles = tempImageFiles;
 
           const cliResult = await this.executeGeminiCLIWithRetry(cliCommand, signal);
-          
+
           if (!cliResult.success) {
             throw new Error(cliResult.error || "CLI command failed");
           }
 
           // Parse the CLI response
           const parseResult = this.parseCLIResponse(cliResult.output || "");
-          
+
           if (!parseResult.success) {
             // Try to recover from malformed response
             const recoveryResult = this.handleMalformedCLIResponse(cliResult.output || "", parseResult.error || "Unknown parsing error");
-            
+
             if (!recoveryResult.success) {
               throw new Error(recoveryResult.error || "Failed to parse CLI response");
             }
-            
+
             // Use recovered content as response
             responseContent = recoveryResult.data?.content || cliResult.output || "";
           } else {
@@ -2389,28 +2508,33 @@ Your solution should be efficient, well-commented, and handle edge cases.
           // Graceful degradation: provide helpful guidance based on CLI state
           const cliState = this.getCLIClientState();
           const degradationMessage = this.generateGracefulDegradationMessage(cliState, 'solution');
-          
+
           return {
             success: false,
             error: degradationMessage
           };
+        } finally {
+          // Always cleanup temporary files
+          if (tempFiles.length > 0) {
+            await this.cleanupTempFiles(tempFiles);
+          }
         }
       }
-      
+
       // Extract parts from the response
       const codeMatch = responseContent.match(/```(?:\w+)?\s*([\s\S]*?)```/);
       const code = codeMatch ? codeMatch[1].trim() : responseContent;
-      
+
       // Extract thoughts, looking for bullet points or numbered lists
       const thoughtsRegex = /(?:Thoughts:|Key Insights:|Reasoning:|Approach:)([\s\S]*?)(?:Time complexity:|$)/i;
       const thoughtsMatch = responseContent.match(thoughtsRegex);
       let thoughts: string[] = [];
-      
+
       if (thoughtsMatch && thoughtsMatch[1]) {
         // Extract bullet points or numbered items
         const bulletPoints = thoughtsMatch[1].match(/(?:^|\n)\s*(?:[-*•]|\d+\.)\s*(.*)/g);
         if (bulletPoints) {
-          thoughts = bulletPoints.map(point => 
+          thoughts = bulletPoints.map(point =>
             point.replace(/^\s*(?:[-*•]|\d+\.)\s*/, '').trim()
           ).filter(Boolean);
         } else {
@@ -2420,14 +2544,14 @@ Your solution should be efficient, well-commented, and handle edge cases.
             .filter(Boolean);
         }
       }
-      
+
       // Extract complexity information
       const timeComplexityPattern = /Time complexity:?\s*([^\n]+(?:\n[^\n]+)*?)(?=\n\s*(?:Space complexity|$))/i;
       const spaceComplexityPattern = /Space complexity:?\s*([^\n]+(?:\n[^\n]+)*?)(?=\n\s*(?:[A-Z]|$))/i;
-      
+
       let timeComplexity = "O(n) - Linear time complexity because we only iterate through the array once. Each element is processed exactly one time, and the hashmap lookups are O(1) operations.";
       let spaceComplexity = "O(n) - Linear space complexity because we store elements in the hashmap. In the worst case, we might need to store all elements before finding the solution pair.";
-      
+
       const timeMatch = responseContent.match(timeComplexityPattern);
       if (timeMatch && timeMatch[1]) {
         timeComplexity = timeMatch[1].trim();
@@ -2442,7 +2566,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
           }
         }
       }
-      
+
       const spaceMatch = responseContent.match(spaceComplexityPattern);
       if (spaceMatch && spaceMatch[1]) {
         spaceComplexity = spaceMatch[1].trim();
@@ -2473,7 +2597,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
           error: "Processing was canceled by the user."
         };
       }
-      
+
       if (error?.response?.status === 401) {
         return {
           success: false,
@@ -2485,7 +2609,7 @@ Your solution should be efficient, well-commented, and handle edge cases.
           error: "OpenAI API rate limit exceeded or insufficient credits. Please try again later."
         };
       }
-      
+
       console.error("Solution generation error:", error);
       return { success: false, error: error.message || "Failed to generate solution" };
     }
@@ -2515,9 +2639,9 @@ Your solution should be efficient, well-commented, and handle edge cases.
 
       // Prepare the images for the API call
       const imageDataList = screenshots.map(screenshot => screenshot.data);
-      
+
       let debugContent;
-      
+
       if (config.apiProvider === "openai") {
         if (!this.openaiClient) {
           return {
@@ -2525,10 +2649,10 @@ Your solution should be efficient, well-commented, and handle edge cases.
             error: "OpenAI API key not configured. Please check your settings."
           };
         }
-        
+
         const messages = [
           {
-            role: "system" as const, 
+            role: "system" as const,
             content: `You are a coding interview assistant helping debug and improve solutions. Analyze these screenshots which include either error messages, incorrect outputs, or test cases, and provide detailed debugging help.
 
 Your response MUST follow this exact structure with these section headers (use ### for headers):
@@ -2553,12 +2677,12 @@ If you include code examples, use proper markdown code blocks with language spec
             role: "user" as const,
             content: [
               {
-                type: "text" as const, 
+                type: "text" as const,
                 text: `I'm solving this coding problem: "${problemInfo.problem_statement}" in ${language}. I need help with debugging or improving my solution. Here are screenshots of my code, the errors or test cases. Please provide a detailed analysis with:
 1. What issues you found in my code
 2. Specific improvements and corrections
 3. Any optimizations that would make the solution better
-4. A clear explanation of the changes needed` 
+4. A clear explanation of the changes needed`
               },
               ...imageDataList.map(data => ({
                 type: "image_url" as const,
@@ -2581,16 +2705,16 @@ If you include code examples, use proper markdown code blocks with language spec
           max_tokens: 4000,
           temperature: 0.2
         });
-        
+
         debugContent = debugResponse.choices[0].message.content;
-      } else if (config.apiProvider === "gemini")  {
+      } else if (config.apiProvider === "gemini") {
         if (!this.geminiApiKey) {
           return {
             success: false,
             error: "Gemini API key not configured. Please check your settings."
           };
         }
-        
+
         try {
           const debugPrompt = `
 You are a coding interview assistant helping debug and improve solutions. Analyze these screenshots which include either error messages, incorrect outputs, or test cases, and provide detailed debugging help.
@@ -2651,11 +2775,11 @@ If you include code examples, use proper markdown code blocks with language spec
           );
 
           const responseData = response.data as GeminiResponse;
-          
+
           if (!responseData.candidates || responseData.candidates.length === 0) {
             throw new Error("Empty response from Gemini API");
           }
-          
+
           debugContent = responseData.candidates[0].content.parts[0].text;
         } catch (error) {
           console.error("Error using Gemini API for debugging:", error);
@@ -2671,7 +2795,7 @@ If you include code examples, use proper markdown code blocks with language spec
             error: "Anthropic API key not configured. Please check your settings."
           };
         }
-        
+
         try {
           const debugPrompt = `
 You are a coding interview assistant helping debug and improve solutions. Analyze these screenshots which include either error messages, incorrect outputs, or test cases, and provide detailed debugging help.
@@ -2709,7 +2833,7 @@ If you include code examples, use proper markdown code blocks with language spec
                   type: "image" as const,
                   source: {
                     type: "base64" as const,
-                    media_type: "image/png" as const, 
+                    media_type: "image/png" as const,
                     data: data
                   }
                 }))
@@ -2730,11 +2854,11 @@ If you include code examples, use proper markdown code blocks with language spec
             messages: messages,
             temperature: 0.2
           });
-          
+
           debugContent = (response.content[0] as { type: 'text', text: string }).text;
         } catch (error: any) {
           console.error("Error using Anthropic API for debugging:", error);
-          
+
           // Add specific handling for Claude's limitations
           if (error.status === 429) {
             return {
@@ -2747,7 +2871,7 @@ If you include code examples, use proper markdown code blocks with language spec
               error: "Your screenshots contain too much information for Claude to process. Switch to OpenAI or Gemini in settings which can handle larger inputs."
             };
           }
-          
+
           return {
             success: false,
             error: "Failed to process debug request with Anthropic API. Please check your API key or try again later."
@@ -2755,8 +2879,10 @@ If you include code examples, use proper markdown code blocks with language spec
         }
       } else if (config.apiProvider === "gemini-cli") {
         // Gemini CLI processing for debugging
+        let tempFiles: string[] = [];
         try {
-          const cliCommand = this.formatDebugCLIPrompt(problemInfo, language, imageDataList);
+          const { command: cliCommand, tempFiles: tempImageFiles } = await this.formatDebugCLIPrompt(problemInfo, language, imageDataList);
+          tempFiles = tempImageFiles;
 
           if (mainWindow) {
             mainWindow.webContents.send("processing-status", {
@@ -2766,22 +2892,22 @@ If you include code examples, use proper markdown code blocks with language spec
           }
 
           const cliResult = await this.executeGeminiCLIWithRetry(cliCommand, signal);
-          
+
           if (!cliResult.success) {
             throw new Error(cliResult.error || "CLI command failed");
           }
 
           // Parse the CLI response
           const parseResult = this.parseCLIResponse(cliResult.output || "");
-          
+
           if (!parseResult.success) {
             // Try to recover from malformed response
             const recoveryResult = this.handleMalformedCLIResponse(cliResult.output || "", parseResult.error || "Unknown parsing error");
-            
+
             if (!recoveryResult.success) {
               throw new Error(recoveryResult.error || "Failed to parse CLI response");
             }
-            
+
             // Use recovered content as response
             debugContent = recoveryResult.data?.content || cliResult.output || "";
           } else {
@@ -2801,15 +2927,20 @@ If you include code examples, use proper markdown code blocks with language spec
           // Graceful degradation: provide helpful guidance based on CLI state
           const cliState = this.getCLIClientState();
           const degradationMessage = this.generateGracefulDegradationMessage(cliState, 'debugging');
-          
+
           return {
             success: false,
             error: degradationMessage
           };
+        } finally {
+          // Always cleanup temporary files
+          if (tempFiles.length > 0) {
+            await this.cleanupTempFiles(tempFiles);
+          }
         }
       }
-      
-      
+
+
       if (mainWindow) {
         mainWindow.webContents.send("processing-status", {
           message: "Debug analysis complete",
@@ -2824,7 +2955,7 @@ If you include code examples, use proper markdown code blocks with language spec
       }
 
       let formattedDebugContent = debugContent;
-      
+
       if (!debugContent.includes('# ') && !debugContent.includes('## ')) {
         formattedDebugContent = debugContent
           .replace(/issues identified|problems found|bugs found/i, '## Issues Identified')
@@ -2834,10 +2965,10 @@ If you include code examples, use proper markdown code blocks with language spec
       }
 
       const bulletPoints = formattedDebugContent.match(/(?:^|\n)[ ]*(?:[-*•]|\d+\.)[ ]+([^\n]+)/g);
-      const thoughts = bulletPoints 
+      const thoughts = bulletPoints
         ? bulletPoints.map(point => point.replace(/^[ ]*(?:[-*•]|\d+\.)[ ]+/, '').trim()).slice(0, 5)
         : ["Debug analysis based on your screenshots"];
-      
+
       const response = {
         code: extractedCode,
         debug_analysis: formattedDebugContent,
