@@ -259,11 +259,11 @@ export class ProcessingHelper {
         if (modelsResult.error) {
           console.warn('Error getting CLI models:', modelsResult.error);
           // Don't fail initialization if we can't get models - use defaults
-          this.cliClientState.availableModels = ['gemini-2.0-flash', 'gemini-1.5-pro'];
+          this.cliClientState.availableModels = ['gemini-2.5-flash','gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'];
         }
       } else {
         console.warn('getGeminiCLIModels method not available, using defaults');
-        this.cliClientState.availableModels = ['gemini-2.0-flash', 'gemini-1.5-pro'];
+        this.cliClientState.availableModels = ['gemini-2.5-flash','gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'];
       }
 
       // Mark as successfully initialized

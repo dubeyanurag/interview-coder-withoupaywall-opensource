@@ -34,9 +34,9 @@ export class ConfigHelper extends EventEmitter {
   private defaultConfig: Config = {
     apiKey: "",
     apiProvider: "gemini", // Default to Gemini
-    extractionModel: "gemini-2.0-flash", // Default to Flash for faster responses
-    solutionModel: "gemini-2.0-flash",
-    debuggingModel: "gemini-2.0-flash",
+    extractionModel: "gemini-2.5-flash", // Default to Flash for faster responses
+    solutionModel: "gemini-2.5-flash",
+    debuggingModel: "gemini-2.5-flash",
     language: "python",
     opacity: 1.0,
     // CLI-specific default settings
@@ -89,10 +89,10 @@ export class ConfigHelper extends EventEmitter {
       return model;
     } else if (provider === "gemini") {
       // Only allow gemini-1.5-pro and gemini-2.0-flash for Gemini
-      const allowedModels = ['gemini-1.5-pro', 'gemini-2.0-flash'];
+      const allowedModels = ['gemini-2.5-flash','gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'];
       if (!allowedModels.includes(model)) {
         console.warn(`Invalid Gemini model specified: ${model}. Using default model: gemini-2.0-flash`);
-        return 'gemini-2.0-flash'; // Changed default to flash
+        return 'gemini-2.5-flash'; // Changed default to flash
       }
       return model;
     } else if (provider === "anthropic") {
@@ -1284,6 +1284,8 @@ export class ConfigHelper extends EventEmitter {
     // Hardcoded list of available Gemini models that work with the CLI
     // Based on the models available through the Gemini API
     const availableModels = [
+      'gemini-2.5-flash',
+      'gemini-2.5-pro',
       'gemini-2.0-flash-exp',
       'gemini-2.0-flash-thinking-exp-1219',
       'gemini-2.0-flash',
@@ -1319,6 +1321,8 @@ export class ConfigHelper extends EventEmitter {
     // Define the exact models that are supported by the application
     // Only include the core models that are stable and well-tested
     const supportedModels = [
+      'gemini-2.5-flash',
+      'gemini-2.5-pro',
       'gemini-1.5-pro',
       'gemini-2.0-flash'
     ];
